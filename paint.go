@@ -7,37 +7,46 @@ import (
 )
 
 var (
-	width           int32 = 1600
-	height          int32 = 900
-	buffer_to_paint []*[]*Pixel
-	deleted            []*[]*Pixel
+	width             int32 = 1600
+	height            int32 = 900
+	buffer_to_paint   []*[]*Pixel
+	deleted           []*[]*Pixel
 	last_mouse_pos    rl.Vector2
 	mouse_first_click bool = true
 	changed           bool = false
 	last_pixel        *Pixel
 	pixel_size        float32 = 10.0
+    pixels_from_server []*[]*Pixel
+
+	drawing           = false
+	pixels_ch         = make(chan Pixel)
+	last_pos_ch       = make(chan rl.Vector2)
+	FPS         int32 = 144
 )
 
 type Pixel struct {
-	center rl.Vector2
-	radius float32
-	color  rl.Color
+	Center rl.Vector2
+	Radius float32
+	Color  rl.Color
 }
 
 func main() {
-	rl.InitWindow(width, height, "Paint")
+	go StartServer()
+	go StartClient()
+
+	rl.InitWindow(width, height, "Paint SERVER")
 	rl.SetWindowState(rl.FlagVsyncHint)
-	// rl.SetTargetFPS(0)
+	rl.SetTargetFPS(FPS)
 
 	defer rl.CloseWindow()
 
 	target := rl.LoadRenderTexture(width, height)
 
 	for !rl.WindowShouldClose() {
-
 		HandlePainting(target)
 		HandleInput()
-		DrawIfChanged(target)
+		// DrawIfChanged(target)
+		DrawIfChangedPerPixel(target)
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.White)
@@ -45,7 +54,6 @@ func main() {
 		rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixel_size, rl.Black)
 		rl.DrawFPS(width-200, 20)
 		rl.EndDrawing()
-
 	}
 }
 
@@ -57,10 +65,10 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 		var last_pixel_loop *Pixel
 		for _, pixel_array := range buffer_to_paint {
 			for i, pixel := range *pixel_array {
-				rl.DrawCircleV(pixel.center, pixel.radius, pixel.color)
+				rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
 				// Draws a line between the last and newest pixel
 				if i > 0 && last_pixel_loop != nil {
-					rl.DrawLineEx(pixel.center, last_pixel_loop.center, pixel.radius*2, rl.Black)
+					rl.DrawLineEx(pixel.Center, last_pixel_loop.Center, pixel.Radius*2, rl.Black)
 				}
 				last_pixel_loop = pixel
 			}
@@ -71,10 +79,34 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 	}
 }
 
+var buffer_test_paint []*Pixel
+
+func DrawIfChangedPerPixel(target rl.RenderTexture2D) {
+	if changed {
+		rl.BeginTextureMode(target)
+		rl.ClearBackground(rl.White)
+		var last_pixel_loop *Pixel
+		for i, pixel := range buffer_test_paint {
+			rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
+			// Draws a line between the last and newest pixel
+			if i > 0 && last_pixel_loop != nil {
+				rl.DrawLineEx(pixel.Center, last_pixel_loop.Center, pixel.Radius*2, rl.Black)
+			}
+			last_pixel_loop = pixel
+		}
+
+		rl.EndTextureMode()
+		changed = false
+		last_pixel_loop = nil
+	}
+}
+
 func HandlePainting(target rl.RenderTexture2D) {
 	if rl.IsMouseButtonDown(rl.MouseButtonLeft) {
+		drawing = true
 		mouse_position := rl.GetMousePosition()
 		new_pixel := Pixel{mouse_position, pixel_size, rl.Black}
+		pixels_ch <- new_pixel
 
 		// If it's the first click, creates a new list of pixels and append to buffer_to_paint
 		if mouse_first_click {
@@ -83,25 +115,29 @@ func HandlePainting(target rl.RenderTexture2D) {
 			mouse_first_click = false
 		}
 
-		if new_pixel.center != last_mouse_pos {
+		if new_pixel.Center != last_mouse_pos {
 			len_buffer_to_paint := len(buffer_to_paint)
 			*buffer_to_paint[len_buffer_to_paint-1] = append(*buffer_to_paint[len_buffer_to_paint-1], &new_pixel)
+			last_pos_ch <- last_mouse_pos
 			last_mouse_pos = mouse_position
 
-			rl.BeginTextureMode(target)
-			rl.DrawCircleV(new_pixel.center, new_pixel.radius, new_pixel.color)
-			if last_pixel != nil {
-				rl.DrawLineEx(new_pixel.center, last_pixel.center, new_pixel.radius*2, rl.Black)
-			}
-			rl.EndTextureMode()
+			// rl.BeginTextureMode(target)
+			// rl.DrawCircleV(new_pixel.Center, new_pixel.Radius, new_pixel.Color)
+			// if last_pixel != nil {
+			// 	rl.DrawLineEx(new_pixel.Center, last_pixel.Center, new_pixel.Radius*2, rl.Black)
+			// }
+			// rl.EndTextureMode()
 
 			last_pixel = &new_pixel
+		} else {
+			last_pos_ch <- mouse_position
 		}
 
 	} else {
 		// if !mouse_first_click {
 		// 	changed = true
 		// }
+		drawing = false
 		mouse_first_click = true
 		last_pixel = nil
 	}
@@ -109,12 +145,11 @@ func HandlePainting(target rl.RenderTexture2D) {
 
 func HandleInput() {
 	if rl.IsKeyPressed(rl.KeyS) {
-		fmt.Println("")
 		for _, pixel_array := range buffer_to_paint {
 			fmt.Println(pixel_array)
 		}
 	}
-	
+
 	if rl.IsKeyPressed(rl.KeyR) {
 		buffer_to_paint = []*[]*Pixel{}
 		changed = true
