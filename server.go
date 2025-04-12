@@ -11,21 +11,44 @@
 // EVENTS SENT BY SERVER
 // DRAW: Sends all accumulated pixels.
 
+// (client) send the pixels from the client,
+// (server) store them in a array of array of pixels [][]Pixel
+// (server) send the pixels from the server back to the client
+// what im thinking:
+// 		the interaction between client and server can be only sending pixel for pixel
+// 		but when other clients interact between each other, the server needs to send the whole array of pixels
+// 		the client then only replace the last array of the other client
+
 package main
 
 import (
-	"fmt"
+	"encoding/binary"
+	"io"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
 type Server struct{}
 
-var clients = make(map[int]*Client)
-var clients_buffer = make(map[int]*[]*Pixel)
-var id int = 0
+// type Package struct {
+// 	Kind string
+// }
+// 
+
+
+var id int32 = 0
+var clients = make(map[int32]*Client)
+var clients_conn = make(map[int32]*net.Conn)
+var clients_pixel_buffer = make(map[int32][]*Pixel) // used to accumulate pixels before appending to the client's array
 var pixels_server_ch = make(chan []byte)
+var eventsToSend = make(chan *Event)
+// events: used to process the updates after each tick.
+// iterate over it to send the right messages
+
+var serverLogger = log.New(os.Stdout, "[SERVER]: ", log.LstdFlags)
+
 
 func (s *Server) Start() {
 	// ln, err := net.Listen("tcp", "26.57.33.158:3120")
@@ -35,7 +58,8 @@ func (s *Server) Start() {
 		// log.Fatal(err)
 	}
 
-	go SendPixels()
+	// go SendPixels()
+	go SendEvent()
 
 	for {
 		conn, err := ln.Accept()
@@ -43,59 +67,233 @@ func (s *Server) Start() {
 			log.Fatal(err)
 		}
 
-		clients[id] = NewClient(id, conn)
-		go s.ReadConn(id, conn)
-		id++
+		// clients[id] = NewClient(id, conn)
+		go s.ReadConn(conn)
+		// id++
 	}
 }
 
-func (s *Server) ReadConn(id int, conn net.Conn) {
-	buf := make([]byte, 156)
+// create the package and store them on update_buffer
+func (s *Server) ReadConn(conn net.Conn) {
 	for {
-		_, err := conn.Read(buf)
-		if err != nil {
-			return
-
+		var length int32
+		if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
+			serverLogger.Println("Failed to read length:", err)
+			panic(err)
 		}
 
-		data, err := Decode(buf)
-		if err != nil {
-			log.Println(err)
+		buf := make([]byte, length)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			serverLogger.Println("Failed to read full message:", err)
+			panic(err)
 		}
 
-		if data != nil {
-			// fmt.Println("received data: ")
-			// fmt.Println("data: ", data)
+		
+		// data, err := DecodePixel(buf)
+		event, err := Decode(buf)
+		if err != nil {
+			serverLogger.Println(err)
+			panic(err)
+		}
+		
+		if event != nil {
+			// serverLogger.Println("Event received", event.Kind)
+			SHandleReceivedEvents(event, conn)
+			// serverLogger.Println("received data: ")
+			// serverLogger.Println("data: ", data)
 
-			pixels_server_ch <- buf
-			*clients[id].pixels = append(*clients[id].pixels, data)
+			// pixels_server_ch <- buf
+			// *clients[id].pixels = append(*clients[id].pixels, data)
+
+			// accumulate events
 		}
 
 		// if err != nil {
-		// 	fmt.Println(errors.Is(err, os.ErrDeadlineExceeded))
+		// 	serverLogger.Println(errors.Is(err, os.ErrDeadlineExceeded))
 		// 	log.Fatal("read error", err)
 		// }
 	}
 }
 
-func SendPixels() {
-	// TODO: Tick to accumulate pixels instead of sending every pixel at once
-	go func() {
-		for {
-			for id, client := range clients {
-				fmt.Println(id, client.pixels)
-			}
-			// time.Sleep(time.Second / 144)
-			time.Sleep(time.Second / 60)
+// handle event received
+func SHandleReceivedEvents(event *Event, conn net.Conn) {
+	// stay aware that when just forwarding the events to be sent it may break things
+	switch innerEvent := event.InnerEvent.(type) {
+	case PingEvent:
+		serverLogger.Println("Receiving: Ping received")
+		id++
+		clients[id] = NewClient(id, conn)
+		eventsToSend <- &Event{
+			PlayerId: id,
+			Kind: "pong", 
+			InnerEvent: PongEvent{}, 
 		}
-	}()
-
-	for pixel := range pixels_server_ch {
-		for _, v := range clients {
-			v.conn.Write(pixel)
+		// maybe use a lock to add the id
+	case JoinedEvent:
+		serverLogger.Println("Receiving: Joined")
+		eventsToSend <- &Event{
+			PlayerId: event.PlayerId, 
+			Kind: event.Kind, 
+			InnerEvent: JoinedEvent{}, 
 		}
+	case LeftEvent:
+		serverLogger.Println("Receiving: Left")
+		eventsToSend <- &Event{
+			PlayerId: event.PlayerId,
+			Kind: event.Kind,
+			InnerEvent: LeftEvent{}, 
+		}
+		delete(clients, event.PlayerId)
+		delete(clients_pixel_buffer, event.PlayerId)
+		delete(clients_conn, event.PlayerId)
+	case StartedEvent:
+		serverLogger.Println("Receiving: Started Drawing")
+		clients[event.PlayerId].Drawing = true
+		eventsToSend <- &Event{
+			PlayerId: event.PlayerId,
+			Kind: event.Kind,
+			InnerEvent: StartedEvent{}, 
+		}
+	case DoneEvent:
+		serverLogger.Println("Receiving: Done")
+		clients[event.PlayerId].Drawing = false
+		eventsToSend <- &Event{
+			PlayerId: event.PlayerId,
+			Kind: event.Kind,
+			InnerEvent: DoneEvent{}, 
+		}
+	case DrawingEvent:
+		serverLogger.Println("Receiving: Player sending pixels")
+		clients_pixel_buffer[event.PlayerId] = append(clients_pixel_buffer[event.PlayerId], innerEvent.Pixel)
+		eventsToSend <- event
+	default:
+    serverLogger.Println("Receiving: Unknown event type")
 	}
 }
+
+func SendEvent() {
+	ticker := time.NewTicker(time.Second / 60)
+	defer ticker.Stop()
+	
+	for {
+		<- ticker.C
+		var events []*Event
+
+		AccumulateEvents:
+			for {
+				select {
+				case event := <-eventsToSend:
+					events = append(events, event)
+				default:
+					break AccumulateEvents
+				}
+			}
+	
+			for _, event := range events {
+				encondedEvent, _ := Encode(*event)
+				length := int32(len(encondedEvent.Bytes()))
+				switch innerEvent := event.InnerEvent.(type) {
+					case PongEvent:
+						serverLogger.Println("Sending: ID back (PongEvent)")
+						conn := clients[event.PlayerId].Conn
+						if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+							panic(err)
+						}
+						conn.Write(encondedEvent.Bytes())
+					case JoinedEvent:
+						serverLogger.Println("Sending: JoinedEvent")
+						for _, client := range clients {
+							// if client.Id == event.PlayerId { continue }
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+								panic(err)
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					case LeftEvent:
+						serverLogger.Println("Sending: Left")
+						for _, client := range clients {
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+								panic(err)
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					case StartedEvent:
+						serverLogger.Println("Sending: StartedEvent")
+						for _, client := range clients {
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+								panic(err)
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					case DoneEvent:
+						serverLogger.Println("Sending: DoneEvent")
+						for _, client := range clients {
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+								panic(err)
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					case DrawingEvent:
+						serverLogger.Println("Sending: DrawingEvent", event)
+						clients_pixel_buffer[event.PlayerId] = append(clients_pixel_buffer[event.PlayerId], innerEvent.Pixel)
+						for _, client := range clients {
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+								panic(err)
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					default:
+						serverLogger.Println("Sending: Unknown event type")
+				}
+			}
+	}		
+}
+			
+
+
+// func SendPixels() {
+	// TODO: Tick to accumulate pixels instead of sending every pixel at once
+	// go func() {
+	// 	for {
+	// 		// for id, client := range clients {
+	// 		// 	serverLogger.Println(id, client.pixels)
+	// 		// }
+	// 		// time.Sleep(time.Second / 144)
+	// 		time.Sleep(time.Second / 60)
+	// 	}
+	// }()
+
+	// processing packages that clients sent
+	// for _, _package := range update_buffer {
+		// switch _package.kind {
+		// case "started":
+
+		// 	for _, v := range clients {
+		// 		v.conn.Write(_package.data)
+		// 	}
+		// case "drawing":
+		// 	for _, v := range clients {
+		// 		v.conn.Write(_package.data)
+		// 	}
+		// case "joined":
+		// case "left":
+		// }
+	// }
+
+// 	for pixel := range pixels_server_ch {
+// 		// sending all pixels (as bytes) to the clients
+// 		// here, i need to differentiate between packages to send the right, 
+// 		// a pixel or an array of pixels
+// 		for _, v := range clients {
+// 			v.conn.Write(pixel)
+// 		}
+// 	}
+// }
 
 // test
 // func Client() func(size int) error {
@@ -115,7 +313,7 @@ func SendPixels() {
 // 		bin_buf := new(bytes.Buffer)
 // 		gobobj := gob.NewEncoder(bin_buf)
 // 		gobobj.Encode(buffer_to_paint)
-// 		fmt.Println("buffer: ", *buffer_to_paint[0])
+// 		serverLogger.Println("buffer: ", *buffer_to_paint[0])
 // 		//
 
 // 		n, err := conn.Write(bin_buf.Bytes())
@@ -123,7 +321,7 @@ func SendPixels() {
 // 			return err
 // 		}
 
-// 		fmt.Println("written", n)
+// 		serverLogger.Println("written", n)
 // 		return nil
 // 	}
 // }

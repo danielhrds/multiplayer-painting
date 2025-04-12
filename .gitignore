@@ -1,2 +1,4 @@
 main.go
 paint.exe
+raylib-*
+raylib.*

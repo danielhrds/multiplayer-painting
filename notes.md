@@ -13,9 +13,9 @@ There's an event queue accumulated within a tick and processed after tick.
 
 When a client presses the mousedown button, it sends an **DRAWING** event,
 then the server updates client's state to drawing equal to true and returns
-an **DRAWING** event assuring that the client is in fact drawing to
-ALL active users. That way the server knows if it should split the
-pixels into a new array. On client's side is created a new array every time
+an **DRAWING** event to all active users assuring that the client is in fact drawing.
+That way the server knows if it should split the pixels into a new array. 
+On client's side is created a new array every time
 it gets a **DRAWING** event, all users need to do that. Right after the **DRAWING**
 event is sent, **DRAW** event is sent too so the server can start appending updates
 to the update buffer. After each tick, it sends the current state of the update
@@ -26,6 +26,10 @@ updates client state to drawing equal to false for all users.
 
 
 # Server
+
+### Update buffer
+
+Store the updates sent by the client. Might store the whole package.
 
 ## Data
 
@@ -66,6 +70,7 @@ with it is iterate over the map and over each array to draw each pixel.
 _OBS:_ Clients' draws are independent, so it's possible to draw them in parallel.
 
 **EVENTS RECEIVED BY THE CLIENT**
+- JOINED:  Add player to the players map
 - DRAWING: Update all users drawing to true and create a new array of pixels.
 - DRAW:    Add corresponding pixels to correct key on clients map.
            data i.e.: map[int]*[]*Pixel
