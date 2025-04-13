@@ -16,7 +16,7 @@ var (
 	changed           bool = false
 	last_pixel        *Pixel
 	pixel_size        float32 = 10.0
-	FPS         int32 = 144
+	FPS         int32 = 60
 )
 
 func main() {
@@ -170,8 +170,7 @@ func HandlePainting(target rl.RenderTexture2D) {
 		// }
 		// old: mouse_first_click = true
 
-		// provisory
-		if last_pixel != nil {
+		if me.Drawing {
 			clientEventsToSend <- &Event{
 				PlayerId: me.Id,
 				Kind: "done",

@@ -19,7 +19,6 @@ func _client() error {
 	conn, err := net.Dial("tcp", "localhost:3120")
 	if err != nil {
 		return err
-		// log.Fatal(err)
 	}
 
 	encondedEvent, _:= Encode(Event{
@@ -30,6 +29,7 @@ func _client() error {
 	
 	length := int32(len(encondedEvent.Bytes()))
 	if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+		clientLogger.Println("Failed to read prefix length")
 		panic(err)
 	}
 	
@@ -85,19 +85,13 @@ func ClientRead(conn net.Conn) {
 
 		event, err := Decode(buf)
 		if err != nil {
-			clientLogger.Println(err)
+			clientLogger.Println("Failed decoding event", err)
 			panic(err)
 		}
 		
 		if event != nil {
 			CHandleReceivedEvents(event, conn)
-			// clientLogger.Println("received event from SERVER: ")
-			// clientLogger.Println("event: ", event)
-
-			// buffer_test_paint = append(buffer_test_paint, event)
-			// changed = true
 		}
-
 	}
 }
 
@@ -120,7 +114,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 	case PongEvent:
 		clientLogger.Println("Player ID received", event.PlayerId)
 		me.Id = event.PlayerId
-		eventsToSend <- &Event{
+		clientEventsToSend <- &Event{
 			PlayerId: me.Id,
 			Kind: "joined",
 			InnerEvent: JoinedEvent{},
@@ -146,7 +140,9 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 	case DrawingEvent:
 		clientLogger.Println("Player sending pixels", event.PlayerId)
 		last := len(players[event.PlayerId].Scribbles)-1
-		players[event.PlayerId].Scribbles[last] = append(players[event.PlayerId].Scribbles[last], innerEvent.Pixel)
+		if last >= 0 {
+			players[event.PlayerId].Scribbles[last] = append(players[event.PlayerId].Scribbles[last], innerEvent.Pixel)
+		}
 	default:
     clientLogger.Println("Unknown event type")
 	}
@@ -181,12 +177,19 @@ func CSendEvent(conn net.Conn) {
 }
 
 func HandleEvent(event *Event, conn net.Conn) {
-	encondedEvent, _:= Encode(*event)
+	encondedEvent, err := Encode(*event)
+	if err != nil {
+		clientLogger.Println("Failed to encode event")
+		panic(err)
+	}
 	length := int32(len(encondedEvent.Bytes()))
 	if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+		clientLogger.Println("Failed to write prefix length")
 		panic(err)
 	}
 	switch event.InnerEvent.(type) {
+	case JoinedEvent:
+		conn.Write(encondedEvent.Bytes())
 	case StartedEvent:
 		clientLogger.Println("SENDING: Player started drawing", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
@@ -205,14 +208,4 @@ func HandleEvent(event *Event, conn net.Conn) {
 
 func StartClient() {	
 	_client()
-	// go func() {
-	// 	size := 1000
-	// 	time.Sleep(2 * time.Second)
-	// 	client := Client()
-	// 	for {
-	// 		time.Sleep(2 * time.Second)
-	// 		client(size)
-	// 		size += 1000
-	// 	}
-	// }()
 }

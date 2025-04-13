@@ -27,21 +27,33 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
 type Server struct{}
 
-// type Package struct {
-// 	Kind string
-// }
-// 
+type Client struct {
+	Id   int32
+	Conn net.Conn
+	Drawing bool
+	Scribbles [][]*Pixel
+}
 
+func NewClient(id int32, conn net.Conn) *Client {
+	return &Client{
+		id,
+		conn,
+		false,
+		make([][]*Pixel, 0),
+	}
+}
 
 var id int32 = 0
+
 var clients = make(map[int32]*Client)
 var clients_conn = make(map[int32]*net.Conn)
-var clients_pixel_buffer = make(map[int32][]*Pixel) // used to accumulate pixels before appending to the client's array
+var clientsPixelBuffer = make(map[int32][]*Pixel) // used to accumulate pixels before appending to the client's array
 var pixels_server_ch = make(chan []byte)
 var eventsToSend = make(chan *Event)
 // events: used to process the updates after each tick.
@@ -49,16 +61,12 @@ var eventsToSend = make(chan *Event)
 
 var serverLogger = log.New(os.Stdout, "[SERVER]: ", log.LstdFlags)
 
-
 func (s *Server) Start() {
-	// ln, err := net.Listen("tcp", "26.57.33.158:3120")
 	ln, err := net.Listen("tcp", "localhost:3120")
 	if err != nil {
 		return
-		// log.Fatal(err)
 	}
 
-	// go SendPixels()
 	go SendEvent()
 
 	for {
@@ -67,14 +75,19 @@ func (s *Server) Start() {
 			log.Fatal(err)
 		}
 
-		// clients[id] = NewClient(id, conn)
 		go s.ReadConn(conn)
-		// id++
 	}
 }
 
 // create the package and store them on update_buffer
 func (s *Server) ReadConn(conn net.Conn) {
+	//defer func(conn net.Conn) {
+	//	if r := recover(); r != nil {
+	//		serverLogger.Println("Recovered from panic in ReadConn:", r)
+	//		serverLogger.Println("Recovered from panic in ReadConn, CONN:", conn)
+	//	}
+	//}(conn)
+	
 	for {
 		var length int32
 		if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
@@ -88,30 +101,19 @@ func (s *Server) ReadConn(conn net.Conn) {
 			panic(err)
 		}
 
-		
-		// data, err := DecodePixel(buf)
 		event, err := Decode(buf)
+		if len(clients) > 1 {
+			serverLogger.Println("Client 1 map", clients[1].Id)
+			serverLogger.Println("Client 2 map", clients[2].Id)
+		}
 		if err != nil {
 			serverLogger.Println(err)
 			panic(err)
 		}
 		
 		if event != nil {
-			// serverLogger.Println("Event received", event.Kind)
 			SHandleReceivedEvents(event, conn)
-			// serverLogger.Println("received data: ")
-			// serverLogger.Println("data: ", data)
-
-			// pixels_server_ch <- buf
-			// *clients[id].pixels = append(*clients[id].pixels, data)
-
-			// accumulate events
 		}
-
-		// if err != nil {
-		// 	serverLogger.Println(errors.Is(err, os.ErrDeadlineExceeded))
-		// 	log.Fatal("read error", err)
-		// }
 	}
 }
 
@@ -121,20 +123,22 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 	switch innerEvent := event.InnerEvent.(type) {
 	case PingEvent:
 		serverLogger.Println("Receiving: Ping received")
-		id++
-		clients[id] = NewClient(id, conn)
+		newId := atomic.AddInt32(&id, 1)
+		clients[newId] = NewClient(newId, conn)
 		eventsToSend <- &Event{
-			PlayerId: id,
+			PlayerId: newId,
 			Kind: "pong", 
 			InnerEvent: PongEvent{}, 
 		}
 		// maybe use a lock to add the id
 	case JoinedEvent:
 		serverLogger.Println("Receiving: Joined")
-		eventsToSend <- &Event{
-			PlayerId: event.PlayerId, 
-			Kind: event.Kind, 
-			InnerEvent: JoinedEvent{}, 
+		for _, client := range clients {
+			eventsToSend <- &Event{
+				PlayerId: event.PlayerId, 
+				Kind: event.Kind, 
+				InnerEvent: JoinedEvent{}, 
+			}
 		}
 	case LeftEvent:
 		serverLogger.Println("Receiving: Left")
@@ -144,7 +148,7 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 			InnerEvent: LeftEvent{}, 
 		}
 		delete(clients, event.PlayerId)
-		delete(clients_pixel_buffer, event.PlayerId)
+		delete(clientsPixelBuffer, event.PlayerId)
 		delete(clients_conn, event.PlayerId)
 	case StartedEvent:
 		serverLogger.Println("Receiving: Started Drawing")
@@ -164,7 +168,11 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 		}
 	case DrawingEvent:
 		serverLogger.Println("Receiving: Player sending pixels")
-		clients_pixel_buffer[event.PlayerId] = append(clients_pixel_buffer[event.PlayerId], innerEvent.Pixel)
+		// clientsPixelBuffer[event.PlayerId] = append(clientsPixelBuffer[event.PlayerId], innerEvent.Pixel)
+		last := len(clients[event.PlayerId].Scribbles)-1
+		if last >= 0 {
+			clients[event.PlayerId].Scribbles[last] = append(clients[event.PlayerId].Scribbles[last], innerEvent.Pixel)
+		}
 		eventsToSend <- event
 	default:
     serverLogger.Println("Receiving: Unknown event type")
@@ -194,14 +202,14 @@ func SendEvent() {
 				length := int32(len(encondedEvent.Bytes()))
 				switch innerEvent := event.InnerEvent.(type) {
 					case PongEvent:
-						serverLogger.Println("Sending: ID back (PongEvent)")
+						serverLogger.Println("Sending: ID back (PongEvent)", event.PlayerId)
 						conn := clients[event.PlayerId].Conn
 						if err := binary.Write(conn, binary.BigEndian, length); err != nil {
 							panic(err)
 						}
 						conn.Write(encondedEvent.Bytes())
 					case JoinedEvent:
-						serverLogger.Println("Sending: JoinedEvent")
+						serverLogger.Println("Sending: JoinedEvent", event.PlayerId)
 						for _, client := range clients {
 							// if client.Id == event.PlayerId { continue }
 							conn := client.Conn
@@ -211,7 +219,7 @@ func SendEvent() {
 							conn.Write(encondedEvent.Bytes())
 						}
 					case LeftEvent:
-						serverLogger.Println("Sending: Left")
+						serverLogger.Println("Sending: Left", event.PlayerId)
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
@@ -220,7 +228,7 @@ func SendEvent() {
 							conn.Write(encondedEvent.Bytes())
 						}
 					case StartedEvent:
-						serverLogger.Println("Sending: StartedEvent")
+						serverLogger.Println("Sending: StartedEvent", event.PlayerId)
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
@@ -229,7 +237,7 @@ func SendEvent() {
 							conn.Write(encondedEvent.Bytes())
 						}
 					case DoneEvent:
-						serverLogger.Println("Sending: DoneEvent")
+						serverLogger.Println("Sending: DoneEvent", event.PlayerId)
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
@@ -238,8 +246,8 @@ func SendEvent() {
 							conn.Write(encondedEvent.Bytes())
 						}
 					case DrawingEvent:
-						serverLogger.Println("Sending: DrawingEvent", event)
-						clients_pixel_buffer[event.PlayerId] = append(clients_pixel_buffer[event.PlayerId], innerEvent.Pixel)
+						serverLogger.Println("Sending: DrawingEvent", event.PlayerId)
+						clientsPixelBuffer[event.PlayerId] = append(clientsPixelBuffer[event.PlayerId], innerEvent.Pixel)
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
@@ -253,92 +261,8 @@ func SendEvent() {
 			}
 	}		
 }
-			
-
-
-// func SendPixels() {
-	// TODO: Tick to accumulate pixels instead of sending every pixel at once
-	// go func() {
-	// 	for {
-	// 		// for id, client := range clients {
-	// 		// 	serverLogger.Println(id, client.pixels)
-	// 		// }
-	// 		// time.Sleep(time.Second / 144)
-	// 		time.Sleep(time.Second / 60)
-	// 	}
-	// }()
-
-	// processing packages that clients sent
-	// for _, _package := range update_buffer {
-		// switch _package.kind {
-		// case "started":
-
-		// 	for _, v := range clients {
-		// 		v.conn.Write(_package.data)
-		// 	}
-		// case "drawing":
-		// 	for _, v := range clients {
-		// 		v.conn.Write(_package.data)
-		// 	}
-		// case "joined":
-		// case "left":
-		// }
-	// }
-
-// 	for pixel := range pixels_server_ch {
-// 		// sending all pixels (as bytes) to the clients
-// 		// here, i need to differentiate between packages to send the right, 
-// 		// a pixel or an array of pixels
-// 		for _, v := range clients {
-// 			v.conn.Write(pixel)
-// 		}
-// 	}
-// }
-
-// test
-// func Client() func(size int) error {
-// 	conn, err := net.Dial("tcp", "localhost:3120")
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-
-// 	return func(size int) error {
-// 		file := make([]byte, size)
-// 		_, err := io.ReadFull(rand.Reader, file)
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		//
-// 		bin_buf := new(bytes.Buffer)
-// 		gobobj := gob.NewEncoder(bin_buf)
-// 		gobobj.Encode(buffer_to_paint)
-// 		serverLogger.Println("buffer: ", *buffer_to_paint[0])
-// 		//
-
-// 		n, err := conn.Write(bin_buf.Bytes())
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		serverLogger.Println("written", n)
-// 		return nil
-// 	}
-// }
 
 func StartServer() {
-	// go func() {
-	// 	size := 1000
-	// 	time.Sleep(2 * time.Second)
-	// 	client := Client()
-	// 	for {
-	// 		time.Sleep(2 * time.Second)
-	// 		client(size)
-	// 		size += 1000
-	// 	}
-	// }()
-
 	server := &Server{}
 	server.Start()
-
 }
