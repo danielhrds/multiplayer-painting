@@ -52,9 +52,6 @@ func NewClient(id int32, conn net.Conn) *Client {
 var id int32 = 0
 
 var clients = make(map[int32]*Client)
-var clients_conn = make(map[int32]*net.Conn)
-var clientsPixelBuffer = make(map[int32][]*Pixel) // used to accumulate pixels before appending to the client's array
-var pixels_server_ch = make(chan []byte)
 var eventsToSend = make(chan *Event)
 // events: used to process the updates after each tick.
 // iterate over it to send the right messages
@@ -81,34 +78,34 @@ func (s *Server) Start() {
 
 // create the package and store them on update_buffer
 func (s *Server) ReadConn(conn net.Conn) {
-	//defer func(conn net.Conn) {
-	//	if r := recover(); r != nil {
-	//		serverLogger.Println("Recovered from panic in ReadConn:", r)
-	//		serverLogger.Println("Recovered from panic in ReadConn, CONN:", conn)
-	//	}
-	//}(conn)
+	defer conn.Close()
+	defer func(conn net.Conn) {
+		if r := recover(); r != nil {
+			serverLogger.Println("Recovered from panic in ReadConn:", r)
+		}
+	}(conn)
 	
 	for {
 		var length int32
 		if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
 			serverLogger.Println("Failed to read length:", err)
-			panic(err)
+			// panic(err)
+			return
 		}
 
 		buf := make([]byte, length)
 		if _, err := io.ReadFull(conn, buf); err != nil {
 			serverLogger.Println("Failed to read full message:", err)
-			panic(err)
+			// panic(err)
+			return
 		}
 
 		event, err := Decode(buf)
-		if len(clients) > 1 {
-			serverLogger.Println("Client 1 map", clients[1].Id)
-			serverLogger.Println("Client 2 map", clients[2].Id)
-		}
 		if err != nil {
+			serverLogger.Println(event)
 			serverLogger.Println(err)
-			panic(err)
+			// panic(err)
+			return
 		}
 		
 		if event != nil {
@@ -134,10 +131,15 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 	case JoinedEvent:
 		serverLogger.Println("Receiving: Joined")
 		for _, client := range clients {
+			serverLogger.Println("Client Joined", client.Id)
 			eventsToSend <- &Event{
 				PlayerId: event.PlayerId, 
 				Kind: event.Kind, 
-				InnerEvent: JoinedEvent{}, 
+				InnerEvent: JoinedEvent{
+					Id: client.Id,
+					Drawing: client.Drawing,
+					Scribbles: client.Scribbles,
+				},
 			}
 		}
 	case LeftEvent:
@@ -147,12 +149,13 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 			Kind: event.Kind,
 			InnerEvent: LeftEvent{}, 
 		}
-		delete(clients, event.PlayerId)
-		delete(clientsPixelBuffer, event.PlayerId)
-		delete(clients_conn, event.PlayerId)
+		// don't delete the player, it's useful to 
+		// rebuild the board when someone enters 
+		// delete(clients, event.PlayerId)
 	case StartedEvent:
 		serverLogger.Println("Receiving: Started Drawing")
 		clients[event.PlayerId].Drawing = true
+		clients[event.PlayerId].Scribbles = append(clients[event.PlayerId].Scribbles, []*Pixel{})
 		eventsToSend <- &Event{
 			PlayerId: event.PlayerId,
 			Kind: event.Kind,
@@ -168,7 +171,6 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 		}
 	case DrawingEvent:
 		serverLogger.Println("Receiving: Player sending pixels")
-		// clientsPixelBuffer[event.PlayerId] = append(clientsPixelBuffer[event.PlayerId], innerEvent.Pixel)
 		last := len(clients[event.PlayerId].Scribbles)-1
 		if last >= 0 {
 			clients[event.PlayerId].Scribbles[last] = append(clients[event.PlayerId].Scribbles[last], innerEvent.Pixel)
@@ -200,21 +202,21 @@ func SendEvent() {
 			for _, event := range events {
 				encondedEvent, _ := Encode(*event)
 				length := int32(len(encondedEvent.Bytes()))
-				switch innerEvent := event.InnerEvent.(type) {
+				switch event.InnerEvent.(type) {
 					case PongEvent:
 						serverLogger.Println("Sending: ID back (PongEvent)", event.PlayerId)
 						conn := clients[event.PlayerId].Conn
 						if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-							panic(err)
+							return
 						}
 						conn.Write(encondedEvent.Bytes())
 					case JoinedEvent:
 						serverLogger.Println("Sending: JoinedEvent", event.PlayerId)
 						for _, client := range clients {
-							// if client.Id == event.PlayerId { continue }
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								panic(err)
+
+								continue
 							}
 							conn.Write(encondedEvent.Bytes())
 						}
@@ -223,7 +225,8 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								panic(err)
+
+								continue
 							}
 							conn.Write(encondedEvent.Bytes())
 						}
@@ -232,7 +235,8 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								panic(err)
+
+								continue
 							}
 							conn.Write(encondedEvent.Bytes())
 						}
@@ -241,17 +245,19 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								panic(err)
+
+								continue
 							}
 							conn.Write(encondedEvent.Bytes())
 						}
 					case DrawingEvent:
 						serverLogger.Println("Sending: DrawingEvent", event.PlayerId)
-						clientsPixelBuffer[event.PlayerId] = append(clientsPixelBuffer[event.PlayerId], innerEvent.Pixel)
+						// clientsPixelBuffer[event.PlayerId] = append(clientsPixelBuffer[event.PlayerId], innerEvent.Pixel)
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								panic(err)
+
+								continue
 							}
 							conn.Write(encondedEvent.Bytes())
 						}

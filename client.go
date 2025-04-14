@@ -62,6 +62,7 @@ func _client() error {
 }
 
 func ClientRead(conn net.Conn) {
+	defer conn.Close()
 	// buf := make([]byte, 512)
 	for {
 		// _, err := conn.Read(buf)
@@ -120,16 +121,18 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 			InnerEvent: JoinedEvent{},
 		}
 	case JoinedEvent:
-		clientLogger.Println("Player joined", event.PlayerId)
+		clientLogger.Println("Player joined", innerEvent.Id)
 		// avoid recreating the me PlayerObject
-		if event.PlayerId == me.Id { 
-			players[event.PlayerId] = me
+		if innerEvent.Id == me.Id { 
+			players[innerEvent.Id] = me
 			break 
 		} 
-		players[event.PlayerId] = NewPlayer(event.PlayerId)
+		players[innerEvent.Id] = NewPlayer(innerEvent.Id)
+		players[innerEvent.Id].Drawing = innerEvent.Drawing
+		players[innerEvent.Id].Scribbles = innerEvent.Scribbles
 	case LeftEvent:
 		clientLogger.Println("Player left", event.PlayerId)
-		delete(players, event.PlayerId)
+		// delete(players, event.PlayerId)
 	case StartedEvent:
 		clientLogger.Println("Player started drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = true
@@ -172,7 +175,6 @@ func CSendEvent(conn net.Conn) {
 				batchedEvents = batchedEvents[:0]
 			}
 		}	
-		
 	}
 }
 
@@ -189,7 +191,12 @@ func HandleEvent(event *Event, conn net.Conn) {
 	}
 	switch event.InnerEvent.(type) {
 	case JoinedEvent:
+		clientLogger.Println("SENDING: Player joined", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
+	case LeftEvent:
+		clientLogger.Println("SENDING: Player left", event.PlayerId)
+		conn.Write(encondedEvent.Bytes())
+		wg.Done()
 	case StartedEvent:
 		clientLogger.Println("SENDING: Player started drawing", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
@@ -207,5 +214,6 @@ func HandleEvent(event *Event, conn net.Conn) {
 }
 
 func StartClient() {	
+	wg.Add(1)
 	_client()
 }

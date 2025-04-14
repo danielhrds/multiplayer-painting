@@ -1,3 +1,11 @@
+# TO DO
+
+NewPlayer default params (if golang allow)
+BasePlayer type composition
+Bezier curves for smooth lines
+Colors
+Redo/Undo
+
 # Events
 
 There's an event queue accumulated within a tick and processed after tick.

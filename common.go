@@ -44,7 +44,11 @@ type PingEvent struct {}
 
 type PongEvent struct {}
 
-type JoinedEvent struct {} // CHANGE TO HAVE THE DATA OF THE OTHER PLAYERS INSIDE IT
+type JoinedEvent struct {
+	Id int32
+	Drawing bool
+	Scribbles [][]*Pixel
+} // CHANGE TO HAVE THE DATA OF THE OTHER PLAYER INSIDE IT
 
 type LeftEvent struct {}
 

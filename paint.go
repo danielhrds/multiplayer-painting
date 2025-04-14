@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -16,7 +17,8 @@ var (
 	changed           bool = false
 	last_pixel        *Pixel
 	pixel_size        float32 = 10.0
-	FPS         int32 = 60
+	FPS         			int32 = 60
+	wg 								sync.WaitGroup
 )
 
 func main() {
@@ -35,7 +37,6 @@ func main() {
 	for !rl.WindowShouldClose() {
 		HandlePainting(target)
 		HandleInput()
-		// DrawIfChanged(target)
 		DrawIfChanged(target)
 
 		rl.BeginDrawing()
@@ -45,6 +46,14 @@ func main() {
 		rl.DrawFPS(width-200, 20)
 		rl.EndDrawing()
 	}
+
+	// close the application window so they left
+	clientEventsToSend <- &Event{
+		PlayerId: me.Id,
+		Kind: "left",
+		InnerEvent: LeftEvent{},
+	}
+	wg.Wait()
 }
 
 // Draws each pixel in the Texture layer after a change occurs
@@ -82,28 +91,6 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 	changed = false
 }
 
-var buffer_test_paint []*Pixel
-
-func DrawIfChangedPerPixel(target rl.RenderTexture2D) {
-	if changed {
-		rl.BeginTextureMode(target)
-		rl.ClearBackground(rl.White)
-		var last_pixel_loop *Pixel
-		for i, pixel := range buffer_test_paint {
-			rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
-			// Draws a line between the last and newest pixel
-			if i > 0 && last_pixel_loop != nil {
-				rl.DrawLineEx(pixel.Center, last_pixel_loop.Center, pixel.Radius*2, rl.Black)
-			}
-			last_pixel_loop = pixel
-		}
-
-		rl.EndTextureMode()
-		changed = false
-		last_pixel_loop = nil
-	}
-}
-
 func HandlePainting(target rl.RenderTexture2D) {
 	if rl.IsMouseButtonDown(rl.MouseButtonLeft) {
 		mouse_position := rl.GetMousePosition()
@@ -126,50 +113,16 @@ func HandlePainting(target rl.RenderTexture2D) {
 					InnerEvent: DrawingEvent{
 						Pixel: &new_pixel,
 					},
+				}
 			}
-		}
-			
-			// old: If it's the first click, creates a new list of pixels and append to buffer_to_paint
-			// If he's not drawing yet, it means it's the first click	
-			// pixel_buffer := []*Pixel{}
-			// buffer_to_paint = append(buffer_to_paint, &pixel_buffer)
-			// old: mouse_first_click = false
-
-			
-			// drawing was changed to me.Drawing, that is updated to true by the server
-			// drawing = true
 		}	
-		
-		// old
-		// pixels_ch <- new_pixel
-
 
 		if new_pixel.Center != last_mouse_pos {
-			// comment test
-			// len_buffer_to_paint := len(buffer_to_paint)
-			// *buffer_to_paint[len_buffer_to_paint-1] = append(*buffer_to_paint[len_buffer_to_paint-1], &new_pixel)
-			// last_pos_ch <- last_mouse_pos
 			last_mouse_pos = mouse_position
-
-			// rl.BeginTextureMode(target)
-			// rl.DrawCircleV(new_pixel.Center, new_pixel.Radius, new_pixel.Color)
-			// if last_pixel != nil {
-			// 	rl.DrawLineEx(new_pixel.Center, last_pixel.Center, new_pixel.Radius*2, rl.Black)
-			// }
-			// rl.EndTextureMode()
-
 			last_pixel = &new_pixel
-		} 
-		// else {
-		// 	last_pos_ch <- mouse_position
-		// }
+		}
 
 	} else {
-		// if !mouse_first_click {
-		// 	changed = true
-		// }
-		// old: mouse_first_click = true
-
 		if me.Drawing {
 			clientEventsToSend <- &Event{
 				PlayerId: me.Id,
