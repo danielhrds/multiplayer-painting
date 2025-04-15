@@ -23,6 +23,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -52,22 +53,25 @@ func NewClient(id int32, conn net.Conn) *Client {
 }
 
 var id int32 = 0
-
+var port = 3120
 var clients = make(map[int32]*Client)
 var eventsToSend = make(chan *Event)
 // events: used to process the updates after each tick.
 // iterate over it to send the right messages
 
-var serverLogger = log.New(os.Stdout, "[SERVER]: ", log.LstdFlags)
+var serverLogger = NewLogger(os.Stdout, "[SERVER]: ", log.LstdFlags)
 
 func (s *Server) Start() {
-	ln, err := net.Listen("tcp", "localhost:3120")
+	url := fmt.Sprintf("localhost:%d", port)
+	ln, err := net.Listen("tcp", url)
 	if err != nil {
 		return
 	}
 
 	go SendEvent()
 
+	serverLogger.Println("Server running or port", port)
+	
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

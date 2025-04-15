@@ -11,11 +11,10 @@ import (
 
 var players = make(map[int32]*Player)
 var me = NewPlayer(0)
-var clientLogger = log.New(os.Stdout, "[CLIENT]: ", log.LstdFlags)
+var clientLogger = NewLogger(os.Stdout, "[CLIENT]: ", log.LstdFlags)
 var clientEventsToSend = make(chan *Event)
 
 func _client() error {
-	// conn, err := net.Dial("tcp", "26.57.33.158:3120")
 	conn, err := net.Dial("tcp", "localhost:3120")
 	if err != nil {
 		return err

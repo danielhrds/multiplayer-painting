@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -10,10 +9,8 @@ import (
 var (
 	width             int32 = 1600
 	height            int32 = 900
-	buffer_to_paint   []*[]*Pixel
-	last_mouse_pos    rl.Vector2
+	lastMousePos    rl.Vector2
 	changed           bool = false
-	last_pixel        *Pixel
 	pixelSize        float32 = 10.0
 	FPS         			int32 = 60
 	wg 								sync.WaitGroup
@@ -120,8 +117,8 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 
 func HandlePainting(target rl.RenderTexture2D) {
 	if rl.IsMouseButtonDown(rl.MouseButtonLeft) {
-		mouse_position := rl.GetMousePosition()
-		new_pixel := Pixel{mouse_position, pixelSize, rl.Black}
+		mousePos := rl.GetMousePosition()
+		newPixel := Pixel{mousePos, pixelSize, rl.Black}
 
 		// avoid send redundant events, otherwise, drawing will be true
 		// as long as the player hold the mouse button
@@ -132,23 +129,16 @@ func HandlePainting(target rl.RenderTexture2D) {
 				Kind: "started",
 				InnerEvent: StartedEvent{},
 			}
-		} else {
-			if new_pixel.Center != last_mouse_pos {
-				clientEventsToSend <- &Event{
-					PlayerId: me.Id,
-					Kind: "drawing",
-					InnerEvent: DrawingEvent{
-						Pixel: &new_pixel,
-					},
-				}
+		} else if newPixel.Center != lastMousePos {
+			clientEventsToSend <- &Event{
+				PlayerId: me.Id,
+				Kind: "drawing",
+				InnerEvent: DrawingEvent{
+					Pixel: &newPixel,
+				},
 			}
+			lastMousePos = mousePos
 		}	
-
-		if new_pixel.Center != last_mouse_pos {
-			last_mouse_pos = mouse_position
-			last_pixel = &new_pixel
-		}
-
 	} else {
 		if me.Drawing {
 			clientEventsToSend <- &Event{
@@ -157,16 +147,10 @@ func HandlePainting(target rl.RenderTexture2D) {
 				InnerEvent: DoneEvent{},
 			}
 		}
-		last_pixel = nil
 	}
 }
 
 func HandleInput() {
-	if rl.IsKeyPressed(rl.KeyS) {
-		for _, pixel_array := range buffer_to_paint {
-			fmt.Println(pixel_array)
-		}
-	}
 
 	// if rl.IsKeyPressed(rl.KeyR) {
 	// 	clear = true

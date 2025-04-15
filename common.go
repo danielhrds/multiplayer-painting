@@ -3,12 +3,23 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
+	"flag"
 	"image/color"
+	"io"
+	"log"
+	"os"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+var logEnabled bool
+
 func init() {
+	flag.BoolVar(&logEnabled, "log", false, "Enable log")
+	flag.Parse()
+	clientLogger.enabled = logEnabled
+	serverLogger.enabled = logEnabled
+	
 	// events
 	gob.Register(Event{})
 	gob.Register(JoinedEvent{})
@@ -83,4 +94,22 @@ func Decode(buffer []byte) (*Event, error) {
 	var event Event
 	err := gobobj.Decode(&event)
 	return &event, err
+}
+
+type Logger struct {
+	logger *log.Logger
+	enabled bool
+}
+
+func NewLogger(out io.Writer, prefix string, flag int) *Logger {
+	return &Logger{
+		logger: log.New(os.Stdout, prefix, log.LstdFlags),
+		enabled: false,
+	}	
+}
+
+func (l *Logger) Println(v ...any) {
+	if l.enabled {
+		l.logger.Println(v...)
+	}
 }
