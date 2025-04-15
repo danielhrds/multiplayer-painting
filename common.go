@@ -18,6 +18,8 @@ func init() {
 	gob.Register(DoneEvent{})
 	gob.Register(PingEvent{})
 	gob.Register(PongEvent{})
+	gob.Register(UndoEvent{})
+	gob.Register(RedoEvent{})
 	
 	// nested types (used inside events)
 	gob.Register(Pixel{})
@@ -58,6 +60,12 @@ type StartedEvent struct {}
 
 type DrawingEvent struct {
 	Pixel *Pixel
+}
+
+type UndoEvent struct {}
+
+type RedoEvent struct {
+	Pixels []*Pixel
 }
 
 // encode an event to bytes

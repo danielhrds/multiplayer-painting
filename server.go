@@ -34,10 +34,11 @@ import (
 type Server struct{}
 
 type Client struct {
-	Id   int32
-	Conn net.Conn
-	Drawing bool
+	Id   			int32
+	Conn 			net.Conn
+	Drawing 	bool
 	Scribbles [][]*Pixel
+	Deleted 	[][]*Pixel
 }
 
 func NewClient(id int32, conn net.Conn) *Client {
@@ -45,6 +46,7 @@ func NewClient(id int32, conn net.Conn) *Client {
 		id,
 		conn,
 		false,
+		make([][]*Pixel, 0),
 		make([][]*Pixel, 0),
 	}
 }
@@ -171,11 +173,36 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 		}
 	case DrawingEvent:
 		serverLogger.Println("Receiving: Player sending pixels")
-		last := len(clients[event.PlayerId].Scribbles)-1
-		if last >= 0 {
-			clients[event.PlayerId].Scribbles[last] = append(clients[event.PlayerId].Scribbles[last], innerEvent.Pixel)
+		maxIndex := len(clients[event.PlayerId].Scribbles)-1
+		if maxIndex >= 0 {
+			clients[event.PlayerId].Scribbles[maxIndex] = append(clients[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
 		}
 		eventsToSend <- event
+	case UndoEvent:
+		serverLogger.Println("Receiving: Player sending undo")
+		maxIndex := len(clients[event.PlayerId].Scribbles)-1
+		serverLogger.Println("maxIndex", maxIndex)
+		if maxIndex >= 0 {
+			last := clients[event.PlayerId].Scribbles[maxIndex]
+			clients[event.PlayerId].Scribbles = clients[event.PlayerId].Scribbles[:maxIndex] 
+			clients[event.PlayerId].Deleted = append(clients[event.PlayerId].Deleted, last)
+			eventsToSend <- event
+		}
+	case RedoEvent:
+		serverLogger.Println("Receiving: Player sending redo")
+		maxIndex := len(clients[event.PlayerId].Deleted)-1
+		if maxIndex >= 0 {
+			last := clients[event.PlayerId].Deleted[maxIndex]
+			clients[event.PlayerId].Scribbles = append(clients[event.PlayerId].Scribbles, last) 
+			clients[event.PlayerId].Deleted = clients[event.PlayerId].Deleted[:maxIndex] 
+			eventsToSend <- &Event{
+				PlayerId: event.PlayerId,
+				Kind: "redo",
+				InnerEvent: RedoEvent{
+					Pixels: last,
+				},
+			}
+		}
 	default:
     serverLogger.Println("Receiving: Unknown event type")
 	}
@@ -215,7 +242,6 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-
 								continue
 							}
 							conn.Write(encondedEvent.Bytes())
@@ -225,7 +251,6 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-
 								continue
 							}
 							conn.Write(encondedEvent.Bytes())
@@ -235,7 +260,6 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-
 								continue
 							}
 							conn.Write(encondedEvent.Bytes())
@@ -245,18 +269,33 @@ func SendEvent() {
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-
 								continue
 							}
 							conn.Write(encondedEvent.Bytes())
 						}
 					case DrawingEvent:
 						serverLogger.Println("Sending: DrawingEvent", event.PlayerId)
-						// clientsPixelBuffer[event.PlayerId] = append(clientsPixelBuffer[event.PlayerId], innerEvent.Pixel)
 						for _, client := range clients {
 							conn := client.Conn
 							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-
+								continue
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					case UndoEvent:
+						serverLogger.Println("Sending: UndoEvent", event.PlayerId)
+						for _, client := range clients {
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+								continue
+							}
+							conn.Write(encondedEvent.Bytes())
+						}
+					case RedoEvent:
+						serverLogger.Println("Sending: RedoEvent", event.PlayerId)
+						for _, client := range clients {
+							conn := client.Conn
+							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
 								continue
 							}
 							conn.Write(encondedEvent.Bytes())

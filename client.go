@@ -38,40 +38,13 @@ func _client() error {
 	go ClientRead(conn)
 	go CSendEvent(conn)
 
-	// for {
-	// 	if !drawing {
-	// 		continue
-	// 	}
-		
-		//pixel := <-pixels_ch
-		//last_pos := <-last_pos_ch
-		//if pixel.Center != last_pos {
-		//	bin_buf, err := Encode(pixel)
-		//	if err != nil {
-		//		log.Fatal(err)
-		//	}
-
-		//	_, err = conn.Write(bin_buf.Bytes())
-		//	if err != nil {
-		//		continue
-		//	}
-		//}
-		// time.Sleep(time.Second / 144)
-	// }
 	return nil
 }
 
 func ClientRead(conn net.Conn) {
 	defer conn.Close()
-	// buf := make([]byte, 512)
-	for {
-		// _, err := conn.Read(buf)
-		// if err != nil {
-		// 	clientLogger.Println("Error trying to read from conn")
-		// 	clientLogger.Println(err)
-		// 	continue
-		// }
 
+	for {
 		var length int32
 		if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
 			serverLogger.Println("Failed to read length:", err)
@@ -142,10 +115,20 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		players[event.PlayerId].Drawing = false
 	case DrawingEvent:
 		clientLogger.Println("Player sending pixels", event.PlayerId)
-		last := len(players[event.PlayerId].Scribbles)-1
-		if last >= 0 {
-			players[event.PlayerId].Scribbles[last] = append(players[event.PlayerId].Scribbles[last], innerEvent.Pixel)
+		maxIndex := len(players[event.PlayerId].Scribbles)-1
+		if maxIndex >= 0 {
+			players[event.PlayerId].Scribbles[maxIndex] = append(players[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
 		}
+		changed = true
+	case UndoEvent:
+		maxIndex := len(players[event.PlayerId].Scribbles)-1
+		if maxIndex >= 0 {
+			players[event.PlayerId].Scribbles = players[event.PlayerId].Scribbles[:maxIndex] 
+		}
+		changed = true
+	case RedoEvent:
+		players[event.PlayerId].Scribbles = append(players[event.PlayerId].Scribbles, innerEvent.Pixels)
+		changed = true
 	default:
     clientLogger.Println("Unknown event type")
 	}
@@ -206,8 +189,12 @@ func HandleEvent(event *Event, conn net.Conn) {
 	case DrawingEvent:
 		clientLogger.Println("SENDING: Player sending pixels", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
-		// last := len(players[event.PlayerId].Scribbles)-1
-		// players[event.PlayerId].Scribbles[last] = append(players[event.PlayerId].Scribbles[last], innerEvent.Pixel)
+	case RedoEvent:
+		clientLogger.Println("SENDING: Player sending redo", event.PlayerId)
+		conn.Write(encondedEvent.Bytes())
+	case UndoEvent:
+		clientLogger.Println("SENDING: Player sending undo", event.PlayerId)
+		conn.Write(encondedEvent.Bytes())
 	default:
 		clientLogger.Println("SENDING: Unknown event type")
 	}

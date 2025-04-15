@@ -4,7 +4,7 @@ NewPlayer default params (if golang allow)
 BasePlayer type composition
 Bezier curves for smooth lines
 Colors
-Redo/Undo
+Reject double events (except Drawing; Undo and Redo)
 
 # Events
 
