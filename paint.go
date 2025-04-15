@@ -19,32 +19,65 @@ var (
 	pixel_size        float32 = 10.0
 	FPS         			int32 = 60
 	wg 								sync.WaitGroup
+	uiMode 						bool = true
+	choose 						string
+	initiated					bool = false
 )
 
 func main() {
-	go StartServer()
-	go StartClient()
+	// go StartServer()
+	// go StartClient()
 
 	rl.SetTraceLogLevel(rl.LogError)
-	rl.InitWindow(width, height, "Paint SERVER")
+	rl.InitWindow(width, height, "Paint")
 	rl.SetWindowState(rl.FlagVsyncHint)
 	rl.SetTargetFPS(FPS)
 
 	defer rl.CloseWindow()
 
 	target := rl.LoadRenderTexture(width, height)
+	halfScreenW := rl.GetScreenWidth() / 2
+	halfScreenH :=  rl.GetScreenHeight() / 2
+	buttonWidth := 400
+	buttonHeight := 100
+	serverButton := NewButton(halfScreenW, halfScreenH - (buttonHeight / 2) - 20, buttonWidth, buttonHeight, rl.Black, "Host", 40)
+	clientButton := NewButton(halfScreenW, halfScreenH + (buttonHeight / 2) + 20, buttonWidth, buttonHeight, rl.Black, "Enter", 40)
 
 	for !rl.WindowShouldClose() {
-		HandlePainting(target)
-		HandleInput()
-		DrawIfChanged(target)
-
-		rl.BeginDrawing()
-		rl.ClearBackground(rl.White)
-		rl.DrawTextureRec(target.Texture, rl.Rectangle{X: 0, Y: 0, Width: float32(target.Texture.Width), Height: -float32(target.Texture.Height)}, rl.Vector2{X: 0, Y: 0}, rl.White)
-		rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixel_size, rl.Black)
-		rl.DrawFPS(width-200, 20)
-		rl.EndDrawing()
+		if uiMode {
+			rl.BeginDrawing()
+			rl.ClearBackground(rl.White)
+			serverButton.Draw()
+			serverButton.Click(func() {
+				choose = "host"
+				uiMode = false
+			})
+			clientButton.Draw()
+			clientButton.Click(func() {
+				choose = "client"
+				uiMode = false
+			})
+			rl.EndDrawing()
+		} else if !initiated {
+				if choose == "host" {
+					go StartServer()
+					go StartClient()
+				} else {
+					go StartClient()
+				}
+				initiated = true
+		} else {
+			HandlePainting(target)
+			HandleInput()
+			DrawIfChanged(target)
+			
+			rl.BeginDrawing()
+			rl.ClearBackground(rl.White)
+			rl.DrawTextureRec(target.Texture, rl.Rectangle{X: 0, Y: 0, Width: float32(target.Texture.Width), Height: -float32(target.Texture.Height)}, rl.Vector2{X: 0, Y: 0}, rl.White)
+			rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixel_size, rl.Black)
+			rl.DrawFPS(width-200, 20)
+			rl.EndDrawing()
+		}
 	}
 
 	// close the application window so they left
@@ -54,6 +87,10 @@ func main() {
 		InnerEvent: LeftEvent{},
 	}
 	wg.Wait()
+}
+
+func Init() {
+	
 }
 
 // Draws each pixel in the Texture layer after a change occurs
@@ -75,17 +112,6 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 		}
 		lastPixelLoop = &Pixel{}
 	}
-	// 
-	// for _, pixel_array := range buffer_to_paint {
-	// 	for i, pixel := range *pixel_array {
-	// 		rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
-	// 		// Draws a line between the last and newest pixel
-	// 		if i > 0 && last_pixel_loop != nil {
-	// 			rl.DrawLineEx(pixel.Center, last_pixel_loop.Center, pixel.Radius*2, rl.Black)
-	// 		}
-	// 		last_pixel_loop = pixel
-	// 	}
-	// }
 
 	rl.EndTextureMode()
 	changed = false
