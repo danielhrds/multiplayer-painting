@@ -55,6 +55,7 @@ func NewClient(id int32, conn net.Conn) *Client {
 var id int32 = 0
 var clients = make(map[int32]*Client)
 var eventsToSend = make(chan *Event)
+var bytesReceivedWithinTick = 0
 // events: used to process the updates after each tick.
 // iterate over it to send the right messages
 
@@ -68,6 +69,7 @@ func (s *Server) Start() {
 	}
 
 	go SendEvent()
+	go Tick()
 
 	serverLogger.Println("Server running or port", port)
 	
@@ -97,6 +99,7 @@ func (s *Server) ReadConn(conn net.Conn) {
 			// panic(err)
 			return
 		}
+		bytesReceivedWithinTick += int(length)
 
 		buf := make([]byte, length)
 		if _, err := io.ReadFull(conn, buf); err != nil {
@@ -184,7 +187,6 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 	case UndoEvent:
 		serverLogger.Println("Receiving: Player sending undo")
 		maxIndex := len(clients[event.PlayerId].Scribbles)-1
-		serverLogger.Println("maxIndex", maxIndex)
 		if maxIndex >= 0 {
 			last := clients[event.PlayerId].Scribbles[maxIndex]
 			clients[event.PlayerId].Scribbles = clients[event.PlayerId].Scribbles[:maxIndex] 
@@ -308,6 +310,31 @@ func SendEvent() {
 				}
 			}
 	}		
+}
+
+func Tick() {
+	ticker := time.NewTicker(time.Second / 60)
+	
+	counter := 0
+	
+	for {
+		<- ticker.C
+		if counter%60 == 0 {
+			serverLogger.Println("MB: ", prettySIByteSize(bytesReceivedWithinTick))
+		}
+		counter++
+	}
+}
+
+func prettySIByteSize(b int) string {
+	bf := float64(b)
+	for _, unit := range []string{"", "k", "M", "G", "T", "P", "E", "Z"} {
+		if bf < 1000.0 {
+			return fmt.Sprintf("%.1f %sB", bf, unit)
+		}
+		bf /= 1000.0
+	}
+	return fmt.Sprintf("%.1f YB", bf)
 }
 
 func StartServer() {

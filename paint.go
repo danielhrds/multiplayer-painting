@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -19,6 +20,7 @@ var (
 	uiMode 						bool = true
 	choose 						string
 	initiated					bool = false
+	COLOR_CONFIG			rl.Color = rl.Magenta
 )
 
 func main() {
@@ -74,6 +76,9 @@ func main() {
 			rl.DrawTextureRec(target.Texture, rl.Rectangle{X: 0, Y: 0, Width: float32(target.Texture.Width), Height: -float32(target.Texture.Height)}, rl.Vector2{X: 0, Y: 0}, rl.White)
 			rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
 			rl.DrawFPS(width-200, 20)
+			
+			pencilSizeText := fmt.Sprintf("Pencil size: %f", int(pixelSize))
+			rl.DrawText(pencilSizeText, 10, 10, 20, COLOR_CONFIG)
 			rl.EndDrawing()
 		}
 		if frame == FPS/frameSpeed {
