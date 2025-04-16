@@ -13,6 +13,8 @@ var (
 	changed           bool = false
 	pixelSize        float32 = 10.0
 	FPS         			int32 = 60
+	frame							int32 = 0
+	frameSpeed				int32 = 30
 	wg 								sync.WaitGroup
 	uiMode 						bool = true
 	choose 						string
@@ -36,6 +38,7 @@ func main() {
 	clientButton := NewButton(halfScreenW, halfScreenH + (buttonHeight / 2) + 20, buttonWidth, buttonHeight, rl.Black, "Enter", 40)
 
 	for !rl.WindowShouldClose() {
+		frame++
 		// ui mode: choose if you're gonna host or enter
 		// initiated: init server/client based on your choice
 		// else: start paint screen
@@ -73,6 +76,9 @@ func main() {
 			rl.DrawFPS(width-200, 20)
 			rl.EndDrawing()
 		}
+		if frame == FPS/frameSpeed {
+			frame = 0
+		}
 	}
 
 	// close the application window so they left
@@ -82,10 +88,6 @@ func main() {
 		InnerEvent: LeftEvent{},
 	}
 	wg.Wait()
-}
-
-func Init() {
-	
 }
 
 // Draws each pixel in the Texture layer after a change occurs
@@ -110,7 +112,6 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 		}
 	}
 	
-
 	rl.EndTextureMode()
 	changed = false
 }
@@ -156,14 +157,12 @@ func HandleInput() {
 	// 	clear = true
 	// }
 	
-	if rl.IsKeyPressed(rl.KeyEqual) {
+	if rl.IsKeyDown(rl.KeyEqual) && frame == FPS/frameSpeed {
 		pixelSize++
 	}
 	
-	if rl.IsKeyPressed(rl.KeyMinus) {
-		if pixelSize > 0 {
-			pixelSize--
-		}
+	if rl.IsKeyDown(rl.KeyMinus) && pixelSize > 1 && frame == FPS/frameSpeed {
+		pixelSize--
 	}
 
 	// Undo the last paint

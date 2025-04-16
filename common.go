@@ -13,6 +13,7 @@ import (
 )
 
 var logEnabled bool
+var port = 3120
 
 func init() {
 	flag.BoolVar(&logEnabled, "log", false, "Enable log")

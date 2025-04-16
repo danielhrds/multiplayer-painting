@@ -53,7 +53,6 @@ func NewClient(id int32, conn net.Conn) *Client {
 }
 
 var id int32 = 0
-var port = 3120
 var clients = make(map[int32]*Client)
 var eventsToSend = make(chan *Event)
 // events: used to process the updates after each tick.

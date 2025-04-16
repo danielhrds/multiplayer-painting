@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -15,7 +16,8 @@ var clientLogger = NewLogger(os.Stdout, "[CLIENT]: ", log.LstdFlags)
 var clientEventsToSend = make(chan *Event)
 
 func _client() error {
-	conn, err := net.Dial("tcp", "localhost:3120")
+	url := fmt.Sprintf("localhost:%d", port)
+	conn, err := net.Dial("tcp", url)
 	if err != nil {
 		return err
 	}
