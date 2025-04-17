@@ -77,7 +77,7 @@ func main() {
 			rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
 			rl.DrawFPS(width-200, 20)
 			
-			pencilSizeText := fmt.Sprintf("Pencil size: %f", int(pixelSize))
+			pencilSizeText := fmt.Sprintf("Pencil size: %d", int(pixelSize))
 			rl.DrawText(pencilSizeText, 10, 10, 20, COLOR_CONFIG)
 			rl.EndDrawing()
 		}
