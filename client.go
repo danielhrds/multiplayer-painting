@@ -22,18 +22,18 @@ func _client() error {
 		return err
 	}
 
-	encondedEvent, _:= Encode(Event{
-		PlayerId: me.Id,
-		Kind: "ping",
+	encondedEvent, _ := Encode(Event{
+		PlayerId:   me.Id,
+		Kind:       "ping",
 		InnerEvent: PingEvent{},
 	})
-	
+
 	length := int32(len(encondedEvent.Bytes()))
 	if err := binary.Write(conn, binary.BigEndian, length); err != nil {
 		clientLogger.Println("Failed to read prefix length")
 		panic(err)
 	}
-	
+
 	conn.Write(encondedEvent.Bytes())
 
 	go ClientRead(conn)
@@ -63,7 +63,7 @@ func ClientRead(conn net.Conn) {
 			clientLogger.Println("Failed decoding event", err)
 			panic(err)
 		}
-		
+
 		if event != nil {
 			CHandleReceivedEvents(event, conn)
 		}
@@ -71,8 +71,8 @@ func ClientRead(conn net.Conn) {
 }
 
 type Player struct {
-	Id int32
-	Drawing bool
+	Id        int32
+	Drawing   bool
 	Scribbles [][]*Pixel
 }
 
@@ -90,48 +90,49 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		clientLogger.Println("Player ID received", event.PlayerId)
 		me.Id = event.PlayerId
 		clientEventsToSend <- &Event{
-			PlayerId: me.Id,
-			Kind: "joined",
+			PlayerId:   me.Id,
+			Kind:       "joined",
 			InnerEvent: JoinedEvent{},
 		}
 	case JoinedEvent:
 		clientLogger.Println("Player joined", innerEvent.Id)
 		// avoid recreating the me PlayerObject
-		if innerEvent.Id == me.Id { 
+		if innerEvent.Id == me.Id {
 			players[innerEvent.Id] = me
-			break 
-		} 
+			break
+		}
 		players[innerEvent.Id] = NewPlayer(innerEvent.Id)
 		players[innerEvent.Id].Drawing = innerEvent.Drawing
 		players[innerEvent.Id].Scribbles = innerEvent.Scribbles
+		changed = true
 	case LeftEvent:
 		clientLogger.Println("Player left", event.PlayerId)
 		// delete(players, event.PlayerId)
 	case StartedEvent:
 		clientLogger.Println("Player started drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = true
-		players[event.PlayerId].Scribbles = append(players[event.PlayerId].Scribbles, []*Pixel{})
+		Append(&players[event.PlayerId].Scribbles, []*Pixel{})
 	case DoneEvent:
 		clientLogger.Println("Player done drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = false
 	case DrawingEvent:
 		clientLogger.Println("Player sending pixels", event.PlayerId)
-		maxIndex := len(players[event.PlayerId].Scribbles)-1
+		maxIndex := len(players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			players[event.PlayerId].Scribbles[maxIndex] = append(players[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
+			Append(&players[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
 		}
 		changed = true
 	case UndoEvent:
-		maxIndex := len(players[event.PlayerId].Scribbles)-1
+		maxIndex := len(players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			players[event.PlayerId].Scribbles = players[event.PlayerId].Scribbles[:maxIndex] 
+			players[event.PlayerId].Scribbles = players[event.PlayerId].Scribbles[:maxIndex]
 		}
 		changed = true
 	case RedoEvent:
-		players[event.PlayerId].Scribbles = append(players[event.PlayerId].Scribbles, innerEvent.Pixels)
+		Append(&players[event.PlayerId].Scribbles, innerEvent.Pixels)
 		changed = true
 	default:
-    clientLogger.Println("Unknown event type")
+		clientLogger.Println("Unknown event type")
 	}
 }
 
@@ -142,8 +143,8 @@ func CSendEvent(conn net.Conn) {
 	var batchedEvents []*Event
 	for {
 		select {
-		case event := <- clientEventsToSend:
-			batchedEvents = append(batchedEvents, event)
+		case event := <-clientEventsToSend:
+			Append(&batchedEvents, event)
 
 			if len(batchedEvents) > 50 {
 				for _, event := range batchedEvents {
@@ -158,7 +159,7 @@ func CSendEvent(conn net.Conn) {
 				}
 				batchedEvents = batchedEvents[:0]
 			}
-		}	
+		}
 	}
 }
 
@@ -201,7 +202,7 @@ func HandleEvent(event *Event, conn net.Conn) {
 	}
 }
 
-func StartClient() {	
+func StartClient() {
 	wg.Add(1)
 	_client()
 }

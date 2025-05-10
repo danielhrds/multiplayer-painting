@@ -114,3 +114,7 @@ func (l *Logger) Println(v ...any) {
 		l.logger.Println(v...)
 	}
 }
+
+func Append[T any](array *[]T, toAppend T) {
+	*array = append(*array, toAppend)
+}

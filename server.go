@@ -35,11 +35,11 @@ import (
 type Server struct{}
 
 type Client struct {
-	Id   			int32
-	Conn 			net.Conn
-	Drawing 	bool
+	Id        int32
+	Conn      net.Conn
+	Drawing   bool
 	Scribbles [][]*Pixel
-	Deleted 	[][]*Pixel
+	Deleted   [][]*Pixel
 }
 
 func NewClient(id int32, conn net.Conn) *Client {
@@ -56,8 +56,6 @@ var id int32 = 0
 var clients = make(map[int32]*Client)
 var eventsToSend = make(chan *Event)
 var bytesReceivedWithinTick = 0
-// events: used to process the updates after each tick.
-// iterate over it to send the right messages
 
 var serverLogger = NewLogger(os.Stdout, "[SERVER]: ", log.LstdFlags)
 
@@ -72,7 +70,7 @@ func (s *Server) Start() {
 	go Tick()
 
 	serverLogger.Println("Server running or port", port)
-	
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -91,7 +89,7 @@ func (s *Server) ReadConn(conn net.Conn) {
 			serverLogger.Println("Recovered from panic in ReadConn:", r)
 		}
 	}(conn)
-	
+
 	for {
 		var length int32
 		if err := binary.Read(conn, binary.BigEndian, &length); err != nil {
@@ -115,7 +113,7 @@ func (s *Server) ReadConn(conn net.Conn) {
 			// panic(err)
 			return
 		}
-		
+
 		if event != nil {
 			SHandleReceivedEvents(event, conn)
 		}
@@ -131,9 +129,9 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 		newId := atomic.AddInt32(&id, 1)
 		clients[newId] = NewClient(newId, conn)
 		eventsToSend <- &Event{
-			PlayerId: newId,
-			Kind: "pong", 
-			InnerEvent: PongEvent{}, 
+			PlayerId:   newId,
+			Kind:       "pong",
+			InnerEvent: PongEvent{},
 		}
 		// maybe use a lock to add the id
 	case JoinedEvent:
@@ -141,11 +139,11 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 		for _, client := range clients {
 			serverLogger.Println("Client Joined", client.Id)
 			eventsToSend <- &Event{
-				PlayerId: event.PlayerId, 
-				Kind: event.Kind, 
+				PlayerId: event.PlayerId,
+				Kind:     event.Kind,
 				InnerEvent: JoinedEvent{
-					Id: client.Id,
-					Drawing: client.Drawing,
+					Id:        client.Id,
+					Drawing:   client.Drawing,
 					Scribbles: client.Scribbles,
 				},
 			}
@@ -153,172 +151,172 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 	case LeftEvent:
 		serverLogger.Println("Receiving: Left")
 		eventsToSend <- &Event{
-			PlayerId: event.PlayerId,
-			Kind: event.Kind,
-			InnerEvent: LeftEvent{}, 
+			PlayerId:   event.PlayerId,
+			Kind:       event.Kind,
+			InnerEvent: LeftEvent{},
 		}
-		// don't delete the player, it's useful to 
-		// rebuild the board when someone enters 
+		// don't delete the player, it's useful to
+		// rebuild the board when someone enters
 		// delete(clients, event.PlayerId)
 	case StartedEvent:
 		serverLogger.Println("Receiving: Started Drawing")
 		clients[event.PlayerId].Drawing = true
-		clients[event.PlayerId].Scribbles = append(clients[event.PlayerId].Scribbles, []*Pixel{})
+		Append(&clients[event.PlayerId].Scribbles, []*Pixel{})
 		eventsToSend <- &Event{
-			PlayerId: event.PlayerId,
-			Kind: event.Kind,
-			InnerEvent: StartedEvent{}, 
+			PlayerId:   event.PlayerId,
+			Kind:       event.Kind,
+			InnerEvent: StartedEvent{},
 		}
 	case DoneEvent:
 		serverLogger.Println("Receiving: Done")
 		clients[event.PlayerId].Drawing = false
 		eventsToSend <- &Event{
-			PlayerId: event.PlayerId,
-			Kind: event.Kind,
-			InnerEvent: DoneEvent{}, 
+			PlayerId:   event.PlayerId,
+			Kind:       event.Kind,
+			InnerEvent: DoneEvent{},
 		}
 	case DrawingEvent:
 		serverLogger.Println("Receiving: Player sending pixels")
-		maxIndex := len(clients[event.PlayerId].Scribbles)-1
+		maxIndex := len(clients[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			clients[event.PlayerId].Scribbles[maxIndex] = append(clients[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
+			Append(&clients[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
 		}
 		eventsToSend <- event
 	case UndoEvent:
 		serverLogger.Println("Receiving: Player sending undo")
-		maxIndex := len(clients[event.PlayerId].Scribbles)-1
+		maxIndex := len(clients[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
 			last := clients[event.PlayerId].Scribbles[maxIndex]
-			clients[event.PlayerId].Scribbles = clients[event.PlayerId].Scribbles[:maxIndex] 
-			clients[event.PlayerId].Deleted = append(clients[event.PlayerId].Deleted, last)
+			clients[event.PlayerId].Scribbles = clients[event.PlayerId].Scribbles[:maxIndex]
+			Append(&clients[event.PlayerId].Deleted, last)
 			eventsToSend <- event
 		}
 	case RedoEvent:
 		serverLogger.Println("Receiving: Player sending redo")
-		maxIndex := len(clients[event.PlayerId].Deleted)-1
+		maxIndex := len(clients[event.PlayerId].Deleted) - 1
 		if maxIndex >= 0 {
 			last := clients[event.PlayerId].Deleted[maxIndex]
-			clients[event.PlayerId].Scribbles = append(clients[event.PlayerId].Scribbles, last) 
-			clients[event.PlayerId].Deleted = clients[event.PlayerId].Deleted[:maxIndex] 
+			Append(&clients[event.PlayerId].Scribbles, last)
+			clients[event.PlayerId].Deleted = clients[event.PlayerId].Deleted[:maxIndex]
 			eventsToSend <- &Event{
 				PlayerId: event.PlayerId,
-				Kind: "redo",
+				Kind:     "redo",
 				InnerEvent: RedoEvent{
 					Pixels: last,
 				},
 			}
 		}
 	default:
-    serverLogger.Println("Receiving: Unknown event type")
+		serverLogger.Println("Receiving: Unknown event type")
 	}
 }
 
 func SendEvent() {
 	ticker := time.NewTicker(time.Second / 60)
 	defer ticker.Stop()
-	
+
 	for {
-		<- ticker.C
+		<-ticker.C
 		var events []*Event
 
-		AccumulateEvents:
-			for {
-				select {
-				case event := <-eventsToSend:
-					events = append(events, event)
-				default:
-					break AccumulateEvents
-				}
+	AccumulateEvents:
+		for {
+			select {
+			case event := <-eventsToSend:
+				Append(&events, event)
+			default:
+				break AccumulateEvents
 			}
-	
-			for _, event := range events {
-				encondedEvent, _ := Encode(*event)
-				length := int32(len(encondedEvent.Bytes()))
-				switch event.InnerEvent.(type) {
-					case PongEvent:
-						serverLogger.Println("Sending: ID back (PongEvent)", event.PlayerId)
-						conn := clients[event.PlayerId].Conn
-						if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-							return
-						}
-						conn.Write(encondedEvent.Bytes())
-					case JoinedEvent:
-						serverLogger.Println("Sending: JoinedEvent", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					case LeftEvent:
-						serverLogger.Println("Sending: Left", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					case StartedEvent:
-						serverLogger.Println("Sending: StartedEvent", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					case DoneEvent:
-						serverLogger.Println("Sending: DoneEvent", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					case DrawingEvent:
-						serverLogger.Println("Sending: DrawingEvent", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					case UndoEvent:
-						serverLogger.Println("Sending: UndoEvent", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					case RedoEvent:
-						serverLogger.Println("Sending: RedoEvent", event.PlayerId)
-						for _, client := range clients {
-							conn := client.Conn
-							if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-								continue
-							}
-							conn.Write(encondedEvent.Bytes())
-						}
-					default:
-						serverLogger.Println("Sending: Unknown event type")
+		}
+
+		for _, event := range events {
+			encondedEvent, _ := Encode(*event)
+			length := int32(len(encondedEvent.Bytes()))
+			switch event.InnerEvent.(type) {
+			case PongEvent:
+				serverLogger.Println("Sending: ID back (PongEvent)", event.PlayerId)
+				conn := clients[event.PlayerId].Conn
+				if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+					return
 				}
+				conn.Write(encondedEvent.Bytes())
+			case JoinedEvent:
+				serverLogger.Println("Sending: JoinedEvent", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			case LeftEvent:
+				serverLogger.Println("Sending: Left", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			case StartedEvent:
+				serverLogger.Println("Sending: StartedEvent", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			case DoneEvent:
+				serverLogger.Println("Sending: DoneEvent", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			case DrawingEvent:
+				serverLogger.Println("Sending: DrawingEvent", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			case UndoEvent:
+				serverLogger.Println("Sending: UndoEvent", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			case RedoEvent:
+				serverLogger.Println("Sending: RedoEvent", event.PlayerId)
+				for _, client := range clients {
+					conn := client.Conn
+					if err := binary.Write(conn, binary.BigEndian, length); err != nil {
+						continue
+					}
+					conn.Write(encondedEvent.Bytes())
+				}
+			default:
+				serverLogger.Println("Sending: Unknown event type")
 			}
-	}		
+		}
+	}
 }
 
 func Tick() {
 	ticker := time.NewTicker(time.Second / 60)
-	
+
 	counter := 0
-	
+
 	for {
-		<- ticker.C
+		<-ticker.C
 		if counter%60 == 0 {
 			serverLogger.Println("MB: ", prettySIByteSize(bytesReceivedWithinTick))
 		}
