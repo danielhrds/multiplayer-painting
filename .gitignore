@@ -1,4 +1,5 @@
 main.go
+test.go
 paint.exe
 raylib-*
 raylib.*
