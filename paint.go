@@ -18,15 +18,21 @@ var (
 	frame         int32   = 0
 	frameSpeed    int32   = 30
 	wg            sync.WaitGroup
-	uiMode        bool = true
+	uiMode        bool     = true
 	selectedColor rl.Color = rl.Black
 	CONFIG_COLOR  rl.Color = rl.Magenta
-	colorPicker 	= ColorPicker{
-			Colors: []rl.Color{rl.Black, rl.Blue, rl.Pink, rl.Purple, rl.Yellow, rl.Orange, rl.Red, rl.Green},
-			Center: lastMousePos,
-			Radius: 120,
-		}
+	colorPicker            = ColorPicker{
+		Colors: []rl.Color{rl.Black, rl.Blue, rl.Pink, rl.Purple, rl.Yellow, rl.Orange, rl.Red, rl.Green},
+		Center: lastMousePos,
+		Radius: 120,
+	}
+	selectedBoundingBox *BoundingBox = nil
 )
+
+type BoundingBox struct {
+	BoundingBox rl.BoundingBox
+	Scribble    []*Pixel
+}
 
 func main() {
 	rl.SetTraceLogLevel(rl.LogError)
@@ -91,8 +97,11 @@ func main() {
 
 func Input() {
 	HandlePainting()
-
 	HandleColorPicker()
+
+	if rl.IsMouseButtonPressed(rl.MouseButtonRight) {
+		go IsMouseClickOnScribble(rl.GetMousePosition())
+	}
 
 	if rl.IsKeyDown(rl.KeyEqual) && frame == FPS/frameSpeed {
 		pixelSize++
@@ -126,6 +135,10 @@ func DrawBoard(target rl.RenderTexture2D) {
 	DrawIfChanged()
 	DrawCache()
 
+	if selectedBoundingBox != nil {
+		rl.DrawBoundingBox(selectedBoundingBox.BoundingBox, CONFIG_COLOR)
+	}
+
 	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
 	rl.DrawFPS(width-200, 20)
 
@@ -136,7 +149,7 @@ func DrawBoard(target rl.RenderTexture2D) {
 
 	pencilSizeText := fmt.Sprintf("Pencil size: %d", int(pixelSize))
 	rl.DrawText(pencilSizeText, 10, 10, 20, CONFIG_COLOR)
-	
+
 	rl.DrawText("Selected color: ", 10, 40, 20, CONFIG_COLOR)
 	rl.DrawCircle(180, 50, 10, selectedColor)
 
@@ -262,10 +275,10 @@ func HandleColorPicker() {
 			currentMousePosition := rl.GetMousePosition()
 			dx := float64(currentMousePosition.X - colorPicker.Center.X)
 			dy := float64(currentMousePosition.Y - colorPicker.Center.Y)
-			angle := math.Atan2(dy, dx) * (180/math.Pi)
+			angle := math.Atan2(dy, dx) * (180 / math.Pi)
 			if angle < 0 {
 				// 0, 360
-				angle += 360 
+				angle += 360
 			}
 			sectorSize := 360 / len(colorPicker.Colors)
 			index := int(angle) / sectorSize
@@ -290,4 +303,87 @@ func GetCache(player *Player, index int) *Cache {
 	}
 
 	return cache
+}
+
+func Interpolate(from float32, to float32, percent float32) float32 {
+	difference := to - from
+	return from + (difference * percent)
+}
+
+func IsMouseClickOnScribble(clickPositon rl.Vector2) {
+	// implement spatial hashing
+	for _, player := range players {
+		for _, pixelArray := range player.Scribbles {
+			for i := range len(pixelArray) - 1 {
+				x1 := pixelArray[i].Center.X
+				x2 := pixelArray[i+1].Center.X
+				y1 := pixelArray[i].Center.Y
+				y2 := pixelArray[i+1].Center.Y
+
+				for j := range 100 {
+					k := float32(j) / 100.0
+					xa := Interpolate(x1, x2, k)
+					ya := Interpolate(y1, y2, k)
+
+					radius := pixelArray[0].Radius
+					xCondition := clickPositon.X > xa-radius && clickPositon.X < xa+radius
+					yCondition := clickPositon.Y > ya-radius && clickPositon.Y < ya+radius
+					if xCondition && yCondition {
+						go FindBoundingBox(pixelArray)
+						return
+					}
+
+					xConditionBoundingBox := selectedBoundingBox != nil && clickPositon.X > selectedBoundingBox.BoundingBox.Min.X && clickPositon.X < selectedBoundingBox.BoundingBox.Max.X
+					yConditionBoundingBox := selectedBoundingBox != nil && clickPositon.Y > selectedBoundingBox.BoundingBox.Min.Y && clickPositon.Y < selectedBoundingBox.BoundingBox.Max.Y
+					mouseInsideBoundingBox := xConditionBoundingBox && yConditionBoundingBox
+					if mouseInsideBoundingBox {
+						fmt.Println("Inside")
+						return
+					}
+
+					if !mouseInsideBoundingBox {
+						selectedBoundingBox = nil
+					}
+
+				}
+			}
+		}
+	}
+}
+
+func FindBoundingBox(scribble []*Pixel) {
+	if len(scribble) < 2 {
+		return
+	}
+
+	var min = rl.NewVector3(float32(width), float32(height), 0)
+	var max = rl.NewVector3(-1, -1, -1)
+
+	for _, pixel := range scribble {
+		if min.X > pixel.Center.X {
+			min.X = pixel.Center.X
+		}
+
+		if min.Y > pixel.Center.Y {
+			min.Y = pixel.Center.Y
+		}
+
+		if max.X < pixel.Center.X {
+			max.X = pixel.Center.X
+		}
+
+		if max.Y < pixel.Center.Y {
+			max.Y = pixel.Center.Y
+		}
+	}
+
+	// adjust padding
+	min.X -= 10
+	max.X += 10
+
+	min.Y -= 10
+	max.Y += 10
+
+	selectedBoundingBox = &BoundingBox{Scribble: scribble, BoundingBox: rl.BoundingBox{Min: min, Max: max}}
+
 }

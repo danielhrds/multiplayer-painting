@@ -163,6 +163,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 			players[event.PlayerId].CachedScribbles = players[event.PlayerId].CachedScribbles[:maxIndex]
 		}
 		
+		selectedBoundingBox = nil
 		changed = true
 	case RedoEvent:
 		Append(&players[event.PlayerId].Scribbles, innerEvent.Pixels)
