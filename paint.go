@@ -132,18 +132,32 @@ func DrawIfChanged() {
 		for _, player := range players {
 			if player.Drawing {
 				currentlyDrawingArray := player.Scribbles[len(player.Scribbles)-1]
-				cache := GetLastCache(player)
+				cache := GetCache(player, len(player.CachedScribbles)-1)
+				if cache == nil {
+					panic("Cache nil")
+				}
 				texture := cache.RenderTexture2D
-				rl.BeginTextureMode(*texture)
-				rl.ClearBackground(rl.Blank)
-				DrawScribble(currentlyDrawingArray)
-				rl.EndTextureMode()
-			} 
+				DrawScribble(currentlyDrawingArray, *texture)
+			} else if player.JustJoined {
+				for i := range len(player.Scribbles) {
+					scribble := player.Scribbles[i]
+					cache := GetCache(player, i)
+					if cache == nil {
+						panic("Cache nil")
+					}
+					texture := cache.RenderTexture2D
+					DrawScribble(scribble, *texture)
+					cache.Drawing = false
+				}
+				player.JustJoined = false
+			}
 		}
 	}
 }
 
-func DrawScribble(scribble []*Pixel) {
+func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
+	rl.BeginTextureMode(renderTexture2D)
+	rl.ClearBackground(rl.Blank)
 	var lastPixelLoop *Pixel
 	for i, pixel := range scribble {
 		rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
@@ -154,12 +168,13 @@ func DrawScribble(scribble []*Pixel) {
 		lastPixelLoop = pixel
 	}
 	lastPixelLoop = &Pixel{}
+	rl.EndTextureMode()
 }
 
 func DrawCache() {
 	for _, player := range players {
 		for i, cache := range player.CachedScribbles {
-			// draw textures that are ready to be drawn or the last texture the player is currently drawing on
+			// Draws textures that are ready to be drawn or the last texture the player is currently drawing on
 			shouldDraw := !cache.Drawing || player.Drawing && i == len(player.CachedScribbles)-1
 			if shouldDraw {
 				rl.DrawTextureRec(
@@ -219,8 +234,12 @@ func HandlePainting() {
 
 // client utils
 
-func GetLastCache(player *Player) *Cache {
-	cache := player.CachedScribbles[len(player.CachedScribbles)-1]
+func GetCache(player *Player, index int) *Cache {
+	if len(player.CachedScribbles) == 0 {
+		return nil
+	}
+	
+	cache := player.CachedScribbles[index]
 
 	if cache.Empty {
 		texture := rl.LoadRenderTexture(width, height)

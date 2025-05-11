@@ -88,6 +88,7 @@ func NewCache() *Cache {
 type Player struct {
 	Id        int32
 	Drawing   bool
+	JustJoined bool
 	Scribbles [][]*Pixel
 	CachedScribbles []*Cache
 }
@@ -95,6 +96,7 @@ type Player struct {
 func NewPlayer(id int32) *Player {
 	return &Player{
 		id,
+		false,
 		false,
 		make([][]*Pixel, 0),
 		make([]*Cache, 0),
@@ -121,6 +123,12 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		players[innerEvent.Id] = NewPlayer(innerEvent.Id)
 		players[innerEvent.Id].Drawing = innerEvent.Drawing
 		players[innerEvent.Id].Scribbles = innerEvent.Scribbles
+		players[innerEvent.Id].JustJoined = true
+
+		for range innerEvent.Scribbles {
+			players[innerEvent.Id].CachedScribbles = append(players[innerEvent.Id].CachedScribbles, NewCache())
+		}
+		
 		changed = true
 	case LeftEvent:
 		clientLogger.Println("Player left", event.PlayerId)
