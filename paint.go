@@ -25,9 +25,9 @@ var (
 func main() {
 	rl.SetTraceLogLevel(rl.LogError)
 	rl.InitWindow(width, height, "Paint")
-	
+
 	// might cause trouble
-	rl.SetWindowState(rl.FlagWindowAlwaysRun);
+	rl.SetWindowState(rl.FlagWindowAlwaysRun)
 
 	// rl.SetWindowState(rl.FlagVsyncHint)
 	rl.SetTargetFPS(FPS)
@@ -129,34 +129,31 @@ func DrawBoard(target rl.RenderTexture2D) {
 
 func DrawIfChanged() {
 	if changed {
-		var lastPixelLoop *Pixel
 		for _, player := range players {
 			if player.Drawing {
 				currentlyDrawingArray := player.Scribbles[len(player.Scribbles)-1]
-				cache := player.CachedScribbles[len(player.CachedScribbles)-1]
-
-				// init cache
-				if cache.Empty {
-					texture := rl.LoadRenderTexture(width, height)
-					cache.RenderTexture2D = &texture
-					cache.Empty = false
-				}
+				cache := GetLastCache(player)
 				texture := cache.RenderTexture2D
 				rl.BeginTextureMode(*texture)
 				rl.ClearBackground(rl.Blank)
-				for i, pixel := range currentlyDrawingArray {
-					rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
-					// Draws a line between the last and newest pixel
-					if i > 0 && lastPixelLoop != nil {
-						rl.DrawLineEx(pixel.Center, lastPixelLoop.Center, pixel.Radius*2, rl.Black)
-					}
-					lastPixelLoop = pixel
-				}
-				lastPixelLoop = &Pixel{}
+				DrawScribble(currentlyDrawingArray)
 				rl.EndTextureMode()
-			}
+			} 
 		}
 	}
+}
+
+func DrawScribble(scribble []*Pixel) {
+	var lastPixelLoop *Pixel
+	for i, pixel := range scribble {
+		rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
+		// Draws a line between the last and newest pixel
+		if i > 0 && lastPixelLoop != nil {
+			rl.DrawLineEx(pixel.Center, lastPixelLoop.Center, pixel.Radius*2, rl.Black)
+		}
+		lastPixelLoop = pixel
+	}
+	lastPixelLoop = &Pixel{}
 }
 
 func DrawCache() {
@@ -187,7 +184,7 @@ func HandlePainting() {
 
 		// avoid send redundant events, otherwise, drawing will be true
 		// as long as the player hold the mouse button
-		// so it would send again these events
+		// so it would send these events again
 		if !me.Drawing {
 			clientEventsToSend <- &Event{
 				PlayerId:   me.Id,
@@ -213,4 +210,23 @@ func HandlePainting() {
 			}
 		}
 	}
+}
+
+
+
+
+
+
+// client utils
+
+func GetLastCache(player *Player) *Cache {
+	cache := player.CachedScribbles[len(player.CachedScribbles)-1]
+
+	if cache.Empty {
+		texture := rl.LoadRenderTexture(width, height)
+		cache.RenderTexture2D = &texture
+		cache.Empty = false
+	}
+
+	return cache
 }

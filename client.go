@@ -89,7 +89,6 @@ type Player struct {
 	Id        int32
 	Drawing   bool
 	Scribbles [][]*Pixel
-
 	CachedScribbles []*Cache
 }
 
