@@ -312,10 +312,14 @@ func Interpolate(from float32, to float32, percent float32) float32 {
 
 func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 	// TO DO:
-	// implement spatial hashing to increase perfomance
+	// Implement spatial hashing to increase perfomance
 	
-	// change Scribble to have it's own type and store min/max info 
+	// Create a client pixel type that has a reference to it's parent.
+	// That way I can find the pixel using spatial hashing and find it's parent 
+	
+	// Change Scribble to have it's own type and store min/max info
 	// when receiving the pixels
+	// I could init min/max on StartedEvent
 	
 	for _, player := range players {
 		for _, pixelArray := range player.Scribbles {
