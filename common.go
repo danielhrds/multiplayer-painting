@@ -13,10 +13,12 @@ import (
 )
 
 var logEnabled bool
+var bytesReceivedLog bool
 var port = 3120
 
 func init() {
 	flag.BoolVar(&logEnabled, "log", false, "Enable log")
+	flag.BoolVar(&bytesReceivedLog, "bytes", false, "Enable bytesReceived log")
 	flag.Parse()
 	clientLogger.enabled = logEnabled
 	serverLogger.enabled = logEnabled

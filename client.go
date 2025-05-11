@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"time"
+
+	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
 var players = make(map[int32]*Player)
@@ -70,10 +72,25 @@ func ClientRead(conn net.Conn) {
 	}
 }
 
+type Cache struct {
+	Drawing, Empty  bool
+	RenderTexture2D *rl.RenderTexture2D
+}
+
+func NewCache() *Cache {
+	return &Cache{
+	 Drawing: true,
+	 Empty: true,
+	 RenderTexture2D: &rl.RenderTexture2D{},
+	}
+}
+
 type Player struct {
 	Id        int32
 	Drawing   bool
 	Scribbles [][]*Pixel
+
+	CachedScribbles []*Cache
 }
 
 func NewPlayer(id int32) *Player {
@@ -81,6 +98,7 @@ func NewPlayer(id int32) *Player {
 		id,
 		false,
 		make([][]*Pixel, 0),
+		make([]*Cache, 0),
 	}
 }
 
@@ -112,9 +130,14 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		clientLogger.Println("Player started drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = true
 		Append(&players[event.PlayerId].Scribbles, []*Pixel{})
+		
+		cache := NewCache()
+		Append(&players[event.PlayerId].CachedScribbles, cache)
 	case DoneEvent:
 		clientLogger.Println("Player done drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = false
+		players[event.PlayerId].CachedScribbles[len(players[event.PlayerId].CachedScribbles)-1].Drawing = false
+		changed = false
 	case DrawingEvent:
 		clientLogger.Println("Player sending pixels", event.PlayerId)
 		maxIndex := len(players[event.PlayerId].Scribbles) - 1
@@ -127,10 +150,21 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		if maxIndex >= 0 {
 			players[event.PlayerId].Scribbles = players[event.PlayerId].Scribbles[:maxIndex]
 		}
+		
+		maxIndex = len(players[event.PlayerId].CachedScribbles) - 1
+		if maxIndex >= 0 {
+			players[event.PlayerId].CachedScribbles = players[event.PlayerId].CachedScribbles[:maxIndex]
+		}
+		
 		changed = true
 	case RedoEvent:
 		Append(&players[event.PlayerId].Scribbles, innerEvent.Pixels)
+		
+		cache := NewCache()
+		Append(&players[event.PlayerId].CachedScribbles, cache)
+		
 		changed = true
+		players[event.PlayerId].Drawing = true
 	default:
 		clientLogger.Println("Unknown event type")
 	}

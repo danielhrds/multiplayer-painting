@@ -67,7 +67,9 @@ func (s *Server) Start() {
 	}
 
 	go SendEvent()
-	go Tick()
+	if bytesReceivedLog {
+		go Tick()
+	}
 
 	serverLogger.Println("Server running or port", port)
 

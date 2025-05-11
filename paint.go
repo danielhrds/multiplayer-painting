@@ -45,7 +45,6 @@ func main() {
 	for !rl.WindowShouldClose() {
 		frame++
 		// ui mode: choose if you're gonna host or enter
-		// initiated: init server/client based on your choice
 		// else: start paint screen
 		if uiMode {
 			rl.BeginDrawing()
@@ -116,18 +115,8 @@ func DrawBoard(target rl.RenderTexture2D) {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.White)
 
-	DrawIfChanged(target)
-
-	rl.DrawTextureRec(
-		target.Texture,
-		rl.Rectangle{
-			X: 0, Y: 0,
-			Width:  float32(target.Texture.Width),
-			Height: -float32(target.Texture.Height),
-		},
-		rl.Vector2{X: 0, Y: 0},
-		rl.White,
-	)
+	DrawIfChanged()
+	DrawCache()
 
 	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
 	rl.DrawFPS(width-200, 20)
@@ -138,16 +127,24 @@ func DrawBoard(target rl.RenderTexture2D) {
 	rl.EndDrawing()
 }
 
-// Draws each pixel in the Texture layer after a change occurs
-func DrawIfChanged(target rl.RenderTexture2D) {
-	rl.BeginTextureMode(target)
-
+func DrawIfChanged() {
 	if changed {
-		rl.ClearBackground(rl.Blank)
 		var lastPixelLoop *Pixel
 		for _, player := range players {
-			for _, pixelArray := range player.Scribbles {
-				for i, pixel := range pixelArray {
+			if player.Drawing {
+				currentlyDrawingArray := player.Scribbles[len(player.Scribbles)-1]
+				cache := player.CachedScribbles[len(player.CachedScribbles)-1]
+
+				// init cache
+				if cache.Empty {
+					texture := rl.LoadRenderTexture(width, height)
+					cache.RenderTexture2D = &texture
+					cache.Empty = false
+				}
+				texture := cache.RenderTexture2D
+				rl.BeginTextureMode(*texture)
+				rl.ClearBackground(rl.Blank)
+				for i, pixel := range currentlyDrawingArray {
 					rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
 					// Draws a line between the last and newest pixel
 					if i > 0 && lastPixelLoop != nil {
@@ -155,13 +152,32 @@ func DrawIfChanged(target rl.RenderTexture2D) {
 					}
 					lastPixelLoop = pixel
 				}
+				lastPixelLoop = &Pixel{}
+				rl.EndTextureMode()
 			}
-			lastPixelLoop = &Pixel{}
 		}
 	}
+}
 
-	rl.EndTextureMode()
-	changed = false
+func DrawCache() {
+	for _, player := range players {
+		for i, cache := range player.CachedScribbles {
+			// draw textures that are ready to be drawn or the last texture the player is currently drawing on
+			shouldDraw := !cache.Drawing || player.Drawing && i == len(player.CachedScribbles)-1
+			if shouldDraw {
+				rl.DrawTextureRec(
+					cache.RenderTexture2D.Texture,
+					rl.Rectangle{
+						X: 0, Y: 0,
+						Width:  float32(cache.RenderTexture2D.Texture.Width),
+						Height: -float32(cache.RenderTexture2D.Texture.Height),
+					},
+					rl.Vector2{X: 0, Y: 0},
+					rl.White,
+				)
+			}
+		}
+	}
 }
 
 func HandlePainting() {
