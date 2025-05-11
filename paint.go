@@ -2,24 +2,30 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
 var (
-	width        int32 = 1600
-	height       int32 = 900
-	lastMousePos rl.Vector2
-	changed      bool    = false
-	pixelSize    float32 = 10.0
-	FPS          int32   = 60
-	frame        int32   = 0
-	frameSpeed   int32   = 30
-	wg           sync.WaitGroup
-	uiMode       bool = true
-
-	CONFIG_COLOR rl.Color = rl.Magenta
+	width         int32 = 1600
+	height        int32 = 900
+	lastMousePos  rl.Vector2
+	changed       bool    = false
+	pixelSize     float32 = 10.0
+	FPS           int32   = 60
+	frame         int32   = 0
+	frameSpeed    int32   = 30
+	wg            sync.WaitGroup
+	uiMode        bool = true
+	selectedColor rl.Color = rl.Black
+	CONFIG_COLOR  rl.Color = rl.Magenta
+	colorPicker 	= ColorPicker{
+			Colors: []rl.Color{rl.Black, rl.Blue, rl.Pink, rl.Purple, rl.Yellow, rl.Orange, rl.Red, rl.Green},
+			Center: lastMousePos,
+			Radius: 120,
+		}
 )
 
 func main() {
@@ -86,6 +92,8 @@ func main() {
 func Input() {
 	HandlePainting()
 
+	HandleColorPicker()
+
 	if rl.IsKeyDown(rl.KeyEqual) && frame == FPS/frameSpeed {
 		pixelSize++
 	}
@@ -121,8 +129,16 @@ func DrawBoard(target rl.RenderTexture2D) {
 	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
 	rl.DrawFPS(width-200, 20)
 
+	mouseXText := fmt.Sprintf("Mouse X: %d", int(rl.GetMousePosition().X))
+	mouseYText := fmt.Sprintf("Mouse Y: %d", int(rl.GetMousePosition().Y))
+	rl.DrawText(mouseXText, width-200, 40, 20, rl.Black)
+	rl.DrawText(mouseYText, width-200, 60, 20, rl.Black)
+
 	pencilSizeText := fmt.Sprintf("Pencil size: %d", int(pixelSize))
 	rl.DrawText(pencilSizeText, 10, 10, 20, CONFIG_COLOR)
+	
+	rl.DrawText("Selected color: ", 10, 40, 20, CONFIG_COLOR)
+	rl.DrawCircle(180, 50, 10, selectedColor)
 
 	rl.EndDrawing()
 }
@@ -141,6 +157,10 @@ func DrawIfChanged() {
 			} else if player.JustJoined {
 				for i := range len(player.Scribbles) {
 					scribble := player.Scribbles[i]
+
+					// to remember:
+					// I initialized cache by iterating over scribbles,
+					// so now cache array is the same size as scribbles.
 					cache := GetCache(player, i)
 					if cache == nil {
 						panic("Cache nil")
@@ -163,7 +183,7 @@ func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
 		rl.DrawCircleV(pixel.Center, pixel.Radius, pixel.Color)
 		// Draws a line between the last and newest pixel
 		if i > 0 && lastPixelLoop != nil {
-			rl.DrawLineEx(pixel.Center, lastPixelLoop.Center, pixel.Radius*2, rl.Black)
+			rl.DrawLineEx(pixel.Center, lastPixelLoop.Center, pixel.Radius*2, pixel.Color)
 		}
 		lastPixelLoop = pixel
 	}
@@ -195,7 +215,7 @@ func DrawCache() {
 func HandlePainting() {
 	if rl.IsMouseButtonDown(rl.MouseButtonLeft) {
 		mousePos := rl.GetMousePosition()
-		newPixel := Pixel{mousePos, pixelSize, rl.Black}
+		newPixel := Pixel{mousePos, pixelSize, selectedColor}
 
 		// avoid send redundant events, otherwise, drawing will be true
 		// as long as the player hold the mouse button
@@ -227,10 +247,32 @@ func HandlePainting() {
 	}
 }
 
+func HandleColorPicker() {
+	if rl.IsKeyPressed(rl.KeyC) {
+		lastMousePos = rl.GetMousePosition()
+	}
 
+	if rl.IsKeyDown(rl.KeyC) {
+		colorPicker.Center = lastMousePos
+		colorPicker.Draw()
+	}
 
-
-
+	if rl.IsKeyReleased(rl.KeyC) {
+		if colorPicker.IsHovering() {
+			currentMousePosition := rl.GetMousePosition()
+			dx := float64(currentMousePosition.X - colorPicker.Center.X)
+			dy := float64(currentMousePosition.Y - colorPicker.Center.Y)
+			angle := math.Atan2(dy, dx) * (180/math.Pi)
+			if angle < 0 {
+				// 0, 360
+				angle += 360 
+			}
+			sectorSize := 360 / len(colorPicker.Colors)
+			index := int(angle) / sectorSize
+			selectedColor = colorPicker.Colors[index]
+		}
+	}
+}
 
 // client utils
 
@@ -238,7 +280,7 @@ func GetCache(player *Player, index int) *Cache {
 	if len(player.CachedScribbles) == 0 {
 		return nil
 	}
-	
+
 	cache := player.CachedScribbles[index]
 
 	if cache.Empty {

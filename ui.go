@@ -1,6 +1,8 @@
 package main
 
 import (
+	"math"
+
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
@@ -48,4 +50,28 @@ func NewButton(x int, y int, width int, height int, backgroundColor rl.Color, te
 		Text:            text,
 		FontSize:        fontSize,
 	}
+
+}
+
+type ColorPicker struct {
+	Colors []rl.Color
+	Center rl.Vector2
+	Radius float32
+}
+
+func (c *ColorPicker) Draw() {
+	spacing := 360 / len(c.Colors)
+	for i, color := range c.Colors {
+		start := float32(i * spacing)
+		end := float32((i * spacing) + spacing)
+		rl.DrawCircleSector(c.Center, c.Radius, start, end, 15, color)
+	}
+}
+
+func (c *ColorPicker) IsHovering() bool {
+	mousePosition := rl.GetMousePosition()
+	p1 := math.Pow(float64(mousePosition.X)-float64(c.Center.X), 2)
+	p2 := math.Pow((float64(mousePosition.Y) - float64(c.Center.Y)), 2)
+	distanceFromCenter := math.Sqrt(p1 + p2)
+	return distanceFromCenter <= float64(c.Radius)
 }
