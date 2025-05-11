@@ -1,9 +1,9 @@
 # TO DO
 
+Safe read/write
+
 NewPlayer default params (if golang allow)
-BasePlayer type composition
-Bezier curves for smooth lines
-Colors
+Bezier curves for smooth lines 
 Reject double events (except Drawing; Undo and Redo)
 
 # Events

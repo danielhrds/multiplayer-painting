@@ -311,7 +311,12 @@ func Interpolate(from float32, to float32, percent float32) float32 {
 }
 
 func IsMouseClickOnScribble(clickPositon rl.Vector2) {
-	// implement spatial hashing
+	// TO DO:
+	// implement spatial hashing to increase perfomance
+	
+	// change Scribble to have it's own type and store min/max info 
+	// when receiving the pixels
+	
 	for _, player := range players {
 		for _, pixelArray := range player.Scribbles {
 			for i := range len(pixelArray) - 1 {
@@ -326,25 +331,25 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 					ya := Interpolate(y1, y2, k)
 
 					radius := pixelArray[0].Radius
-					xCondition := clickPositon.X > xa-radius && clickPositon.X < xa+radius
-					yCondition := clickPositon.Y > ya-radius && clickPositon.Y < ya+radius
-					if xCondition && yCondition {
+					xHoveringLine := clickPositon.X > xa-radius && clickPositon.X < xa+radius
+					yHoveringLine := clickPositon.Y > ya-radius && clickPositon.Y < ya+radius
+					hoveringLine := xHoveringLine && yHoveringLine
+					if hoveringLine {
 						go FindBoundingBox(pixelArray)
 						return
 					}
 
-					xConditionBoundingBox := selectedBoundingBox != nil && clickPositon.X > selectedBoundingBox.BoundingBox.Min.X && clickPositon.X < selectedBoundingBox.BoundingBox.Max.X
-					yConditionBoundingBox := selectedBoundingBox != nil && clickPositon.Y > selectedBoundingBox.BoundingBox.Min.Y && clickPositon.Y < selectedBoundingBox.BoundingBox.Max.Y
-					mouseInsideBoundingBox := xConditionBoundingBox && yConditionBoundingBox
-					if mouseInsideBoundingBox {
+					xInsideBoundingBox := selectedBoundingBox != nil && clickPositon.X > selectedBoundingBox.BoundingBox.Min.X && clickPositon.X < selectedBoundingBox.BoundingBox.Max.X
+					yInsideBoundingBox := selectedBoundingBox != nil && clickPositon.Y > selectedBoundingBox.BoundingBox.Min.Y && clickPositon.Y < selectedBoundingBox.BoundingBox.Max.Y
+					insideBoundingBox := xInsideBoundingBox && yInsideBoundingBox
+					if insideBoundingBox {
 						fmt.Println("Inside")
 						return
 					}
 
-					if !mouseInsideBoundingBox {
+					if !insideBoundingBox {
 						selectedBoundingBox = nil
 					}
-
 				}
 			}
 		}
@@ -377,13 +382,11 @@ func FindBoundingBox(scribble []*Pixel) {
 		}
 	}
 
-	// adjust padding
+	// adjusting padding
 	min.X -= 10
 	max.X += 10
-
 	min.Y -= 10
 	max.Y += 10
 
 	selectedBoundingBox = &BoundingBox{Scribble: scribble, BoundingBox: rl.BoundingBox{Min: min, Max: max}}
-
 }
