@@ -75,3 +75,22 @@ func (c *ColorPicker) IsHovering() bool {
 	distanceFromCenter := math.Sqrt(p1 + p2)
 	return distanceFromCenter <= float64(c.Radius)
 }
+
+type BoundingBox struct {
+	BoundingBox rl.BoundingBox
+	LineThick   float32
+	Scribble    []*Pixel
+}
+
+func (b *BoundingBox) Draw() {
+	rl.DrawRectangleLinesEx(
+		rl.Rectangle{
+			X:      b.BoundingBox.Min.X,
+			Y:      b.BoundingBox.Min.Y,
+			Width:  b.BoundingBox.Max.X - b.BoundingBox.Min.X,
+			Height: b.BoundingBox.Max.Y - b.BoundingBox.Min.Y,
+		},
+		b.LineThick,
+		CONFIG_COLOR,
+	)
+}

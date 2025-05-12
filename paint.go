@@ -29,11 +29,6 @@ var (
 	selectedBoundingBox *BoundingBox = nil
 )
 
-type BoundingBox struct {
-	BoundingBox rl.BoundingBox
-	Scribble    []*Pixel
-}
-
 func main() {
 	rl.SetTraceLogLevel(rl.LogError)
 	rl.InitWindow(width, height, "Paint")
@@ -136,7 +131,7 @@ func DrawBoard(target rl.RenderTexture2D) {
 	DrawCache()
 
 	if selectedBoundingBox != nil {
-		rl.DrawBoundingBox(selectedBoundingBox.BoundingBox, CONFIG_COLOR)
+		selectedBoundingBox.Draw()
 	}
 
 	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
@@ -313,14 +308,14 @@ func Interpolate(from float32, to float32, percent float32) float32 {
 func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 	// TO DO:
 	// Implement spatial hashing to increase perfomance
-	
+
 	// Create a client pixel type that has a reference to it's parent.
-	// That way I can find the pixel using spatial hashing and find it's parent 
-	
+	// That way I can find the pixel using spatial hashing and find it's parent
+
 	// Change Scribble to have it's own type and store min/max info
 	// when receiving the pixels
 	// I could init min/max on StartedEvent
-	
+
 	for _, player := range players {
 		for _, pixelArray := range player.Scribbles {
 			for i := range len(pixelArray) - 1 {
@@ -335,8 +330,9 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 					ya := Interpolate(y1, y2, k)
 
 					radius := pixelArray[0].Radius
-					xHoveringLine := clickPositon.X > xa-radius && clickPositon.X < xa+radius
-					yHoveringLine := clickPositon.Y > ya-radius && clickPositon.Y < ya+radius
+					xHoveringLine := clickPositon.X >= xa-radius && clickPositon.X <= xa+radius
+					yHoveringLine := clickPositon.Y >= ya-radius && clickPositon.Y <= ya+radius
+					fmt.Println(clickPositon.X, xa, xa-radius)
 					hoveringLine := xHoveringLine && yHoveringLine
 					if hoveringLine {
 						go FindBoundingBox(pixelArray)
@@ -361,11 +357,11 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 }
 
 func FindBoundingBox(scribble []*Pixel) {
-	if len(scribble) < 2 {
-		return
-	}
+	// if len(scribble) < 2 {
+	// 	return
+	// }
 
-	var min = rl.NewVector3(float32(width), float32(height), 0)
+	var min = rl.NewVector3(float32(width), float32(height), -1)
 	var max = rl.NewVector3(-1, -1, -1)
 
 	for _, pixel := range scribble {
@@ -386,11 +382,20 @@ func FindBoundingBox(scribble []*Pixel) {
 		}
 	}
 
-	// adjusting padding
-	min.X -= 10
-	max.X += 10
-	min.Y -= 10
-	max.Y += 10
+	var lineThick float32 = 5.0
 
-	selectedBoundingBox = &BoundingBox{Scribble: scribble, BoundingBox: rl.BoundingBox{Min: min, Max: max}}
+	// adjusting padding
+	min.X -= 10 + lineThick
+	max.X += 10 + lineThick
+	min.Y -= 10 + lineThick
+	max.Y += 10 + lineThick
+
+	selectedBoundingBox = &BoundingBox{
+		Scribble: scribble,
+		BoundingBox: rl.BoundingBox{
+			Min: min,
+			Max: max,
+		},
+		LineThick: 5,
+	}
 }
