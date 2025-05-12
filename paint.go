@@ -26,6 +26,7 @@ var (
 		Center: lastMousePos,
 		Radius: 120,
 	}
+	colorPickerOpened	bool
 	selectedBoundingBox *BoundingBox = nil
 )
 
@@ -132,6 +133,10 @@ func DrawBoard(target rl.RenderTexture2D) {
 
 	if selectedBoundingBox != nil {
 		selectedBoundingBox.Draw()
+	}
+
+	if colorPickerOpened {
+		colorPicker.Draw()
 	}
 
 	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
@@ -257,12 +262,12 @@ func HandlePainting() {
 
 func HandleColorPicker() {
 	if rl.IsKeyPressed(rl.KeyC) {
-		lastMousePos = rl.GetMousePosition()
+		colorPicker.LastMousePositionBeforeClick = rl.GetMousePosition()
 	}
 
 	if rl.IsKeyDown(rl.KeyC) {
-		colorPicker.Center = lastMousePos
-		colorPicker.Draw()
+		colorPicker.Center = colorPicker.LastMousePositionBeforeClick
+		colorPickerOpened = true		
 	}
 
 	if rl.IsKeyReleased(rl.KeyC) {
@@ -279,6 +284,7 @@ func HandleColorPicker() {
 			index := int(angle) / sectorSize
 			selectedColor = colorPicker.Colors[index]
 		}
+		colorPickerOpened = false
 	}
 }
 
@@ -332,7 +338,6 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 					radius := pixelArray[0].Radius
 					xHoveringLine := clickPositon.X >= xa-radius && clickPositon.X <= xa+radius
 					yHoveringLine := clickPositon.Y >= ya-radius && clickPositon.Y <= ya+radius
-					fmt.Println(clickPositon.X, xa, xa-radius)
 					hoveringLine := xHoveringLine && yHoveringLine
 					if hoveringLine {
 						go FindBoundingBox(pixelArray)

@@ -57,9 +57,11 @@ type ColorPicker struct {
 	Colors []rl.Color
 	Center rl.Vector2
 	Radius float32
+	LastMousePositionBeforeClick rl.Vector2
 }
 
 func (c *ColorPicker) Draw() {
+	rl.DrawCircleV(c.Center, c.Radius+5, rl.Black)
 	spacing := 360 / len(c.Colors)
 	for i, color := range c.Colors {
 		start := float32(i * spacing)
