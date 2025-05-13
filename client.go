@@ -181,6 +181,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		maxIndex = len(players[event.PlayerId].CachedScribbles) - 1
 		if maxIndex >= 0 {
 			players[event.PlayerId].CachedScribbles = players[event.PlayerId].CachedScribbles[:maxIndex]
+			cacheArray = cacheArray[:len(cacheArray)-1]
 		}
 		
 		selectedBoundingBox = nil
