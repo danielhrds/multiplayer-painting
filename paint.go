@@ -26,7 +26,7 @@ var (
 		Center: lastMousePos,
 		Radius: 120,
 	}
-	colorPickerOpened	bool
+	colorPickerOpened   bool
 	selectedBoundingBox *BoundingBox = nil
 )
 
@@ -122,6 +122,12 @@ func Input() {
 			InnerEvent: RedoEvent{},
 		}
 	}
+
+	// debug purposes
+	if rl.IsKeyPressed(rl.KeyD) {
+		fmt.Println("SCRIBBLE", me.Scribbles[len(me.Scribbles)-1].BoundingBox)
+	}
+	
 }
 
 func DrawBoard(target rl.RenderTexture2D) {
@@ -267,7 +273,7 @@ func HandleColorPicker() {
 
 	if rl.IsKeyDown(rl.KeyC) {
 		colorPicker.Center = colorPicker.LastMousePositionBeforeClick
-		colorPickerOpened = true		
+		colorPickerOpened = true
 	}
 
 	if rl.IsKeyReleased(rl.KeyC) {
@@ -318,34 +324,40 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 	// Create a client pixel type that has a reference to it's parent.
 	// That way I can find the pixel using spatial hashing and find it's parent
 
-	// Change Scribble to have it's own type and store min/max info
-	// when receiving the pixels
-	// I could init min/max on StartedEvent
-
 	for _, player := range players {
-		for _, pixelArray := range player.Scribbles {
-			for i := range len(pixelArray.Pixels) - 1 {
-				x1 := pixelArray.Pixels[i].Center.X
-				x2 := pixelArray.Pixels[i+1].Center.X
-				y1 := pixelArray.Pixels[i].Center.Y
-				y2 := pixelArray.Pixels[i+1].Center.Y
+		for _, scribble := range player.Scribbles {
+			for i := range len(scribble.Pixels) - 1 {
+				x1 := scribble.Pixels[i].Center.X
+				x2 := scribble.Pixels[i+1].Center.X
+				y1 := scribble.Pixels[i].Center.Y
+				y2 := scribble.Pixels[i+1].Center.Y
 
 				for j := range 100 {
 					k := float32(j) / 100.0
 					xa := Interpolate(x1, x2, k)
 					ya := Interpolate(y1, y2, k)
 
-					radius := pixelArray.Pixels[0].Radius
+					radius := scribble.Pixels[0].Radius
 					xHoveringLine := clickPositon.X >= xa-radius && clickPositon.X <= xa+radius
 					yHoveringLine := clickPositon.Y >= ya-radius && clickPositon.Y <= ya+radius
 					hoveringLine := xHoveringLine && yHoveringLine
 					if hoveringLine {
-						go FindBoundingBox(pixelArray.Pixels)
-						return
+						// adjusting padding
+						scribble.BoundingBox.Min.X -= 10 + LINE_THICK
+						scribble.BoundingBox.Max.X += 10 + LINE_THICK
+						scribble.BoundingBox.Min.Y -= 10 + LINE_THICK
+						scribble.BoundingBox.Max.Y += 10 + LINE_THICK
+
+						selectedBoundingBox = &BoundingBox{
+							Scribble: &scribble,
+							Min: scribble.BoundingBox.Min,
+							Max: scribble.BoundingBox.Max,
+							LineThick: 5,
+						}
 					}
 
-					xInsideBoundingBox := selectedBoundingBox != nil && clickPositon.X > selectedBoundingBox.BoundingBox.Min.X && clickPositon.X < selectedBoundingBox.BoundingBox.Max.X
-					yInsideBoundingBox := selectedBoundingBox != nil && clickPositon.Y > selectedBoundingBox.BoundingBox.Min.Y && clickPositon.Y < selectedBoundingBox.BoundingBox.Max.Y
+					xInsideBoundingBox := selectedBoundingBox != nil && clickPositon.X > selectedBoundingBox.Min.X && clickPositon.X < selectedBoundingBox.Max.X
+					yInsideBoundingBox := selectedBoundingBox != nil && clickPositon.Y > selectedBoundingBox.Min.Y && clickPositon.Y < selectedBoundingBox.Max.Y
 					insideBoundingBox := xInsideBoundingBox && yInsideBoundingBox
 					if insideBoundingBox {
 						fmt.Println("Inside")
@@ -361,46 +373,22 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 	}
 }
 
-func FindBoundingBox(scribble []*Pixel) {
-	// if len(scribble) < 2 {
-	// 	return
-	// }
-
-	var min = rl.NewVector3(float32(width), float32(height), -1)
-	var max = rl.NewVector3(-1, -1, -1)
-
-	for _, pixel := range scribble {
-		if min.X > pixel.Center.X {
-			min.X = pixel.Center.X
-		}
-
-		if min.Y > pixel.Center.Y {
-			min.Y = pixel.Center.Y
-		}
-
-		if max.X < pixel.Center.X {
-			max.X = pixel.Center.X
-		}
-
-		if max.Y < pixel.Center.Y {
-			max.Y = pixel.Center.Y
-		}
+func GetMinAndMax(min rl.Vector3, max rl.Vector3, pixel *Pixel) (rl.Vector3, rl.Vector3) {
+	if min.X > pixel.Center.X {
+		min.X = pixel.Center.X
 	}
 
-	var lineThick float32 = 5.0
-
-	// adjusting padding
-	min.X -= 10 + lineThick
-	max.X += 10 + lineThick
-	min.Y -= 10 + lineThick
-	max.Y += 10 + lineThick
-
-	selectedBoundingBox = &BoundingBox{
-		Scribble: scribble,
-		BoundingBox: rl.BoundingBox{
-			Min: min,
-			Max: max,
-		},
-		LineThick: 5,
+	if min.Y > pixel.Center.Y {
+		min.Y = pixel.Center.Y
 	}
+
+	if max.X < pixel.Center.X {
+		max.X = pixel.Center.X
+	}
+
+	if max.Y < pixel.Center.Y {
+		max.Y = pixel.Center.Y
+	}
+	
+	return min, max
 }

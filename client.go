@@ -138,7 +138,9 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 	case StartedEvent:
 		clientLogger.Println("Player started drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = true
-		Append(&players[event.PlayerId].Scribbles, Scribble{})
+		newScribble := NewScribble([]*Pixel{})
+		newScribble.BoundingBox = NewBoundingBox()
+		Append(&players[event.PlayerId].Scribbles, newScribble)
 		
 		cache := NewCache()
 		Append(&players[event.PlayerId].CachedScribbles, cache)
@@ -151,7 +153,12 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		clientLogger.Println("Player sending pixels", event.PlayerId)
 		maxIndex := len(players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			Append(&players[event.PlayerId].Scribbles[maxIndex].Pixels, innerEvent.Pixel)
+			scribble := &players[event.PlayerId].Scribbles[maxIndex]
+			var min, max = GetMinAndMax(scribble.BoundingBox.Min, scribble.BoundingBox.Max, innerEvent.Pixel)
+			scribble.BoundingBox.Min = min
+			scribble.BoundingBox.Max = max
+			pixels := &scribble.Pixels
+			Append(pixels, innerEvent.Pixel)
 		}
 		changed = true
 	case UndoEvent:

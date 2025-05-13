@@ -54,9 +54,9 @@ func NewButton(x int, y int, width int, height int, backgroundColor rl.Color, te
 }
 
 type ColorPicker struct {
-	Colors []rl.Color
-	Center rl.Vector2
-	Radius float32
+	Colors                       []rl.Color
+	Center                       rl.Vector2
+	Radius                       float32
 	LastMousePositionBeforeClick rl.Vector2
 }
 
@@ -78,19 +78,30 @@ func (c *ColorPicker) IsHovering() bool {
 	return distanceFromCenter <= float64(c.Radius)
 }
 
+var LINE_THICK float32 = 6.0
+
 type BoundingBox struct {
-	BoundingBox rl.BoundingBox
+	Min, Max rl.Vector3
 	LineThick   float32
-	Scribble    []*Pixel
+	Scribble    *Scribble
+}
+
+func NewBoundingBox() BoundingBox {
+	return BoundingBox{
+		Min: rl.NewVector3(float32(width), float32(height), -1),
+		Max: rl.NewVector3(-1, -1, -1),
+		LineThick: LINE_THICK,
+		Scribble: nil,
+	}
 }
 
 func (b *BoundingBox) Draw() {
 	rl.DrawRectangleLinesEx(
 		rl.Rectangle{
-			X:      b.BoundingBox.Min.X,
-			Y:      b.BoundingBox.Min.Y,
-			Width:  b.BoundingBox.Max.X - b.BoundingBox.Min.X,
-			Height: b.BoundingBox.Max.Y - b.BoundingBox.Min.Y,
+			X:      b.Min.X,
+			Y:      b.Min.Y,
+			Width:  b.Max.X - b.Min.X,
+			Height: b.Max.Y - b.Min.Y,
 		},
 		b.LineThick,
 		CONFIG_COLOR,
