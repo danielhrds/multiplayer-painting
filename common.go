@@ -50,6 +50,21 @@ type Pixel struct {
 	Color  rl.Color
 }
 
+type Scribble struct {
+	Pixels []*Pixel
+	Zoom uint8
+	Position rl.Vector2
+	BoundingBox BoundingBox
+}
+
+func NewScribble(pixels []*Pixel) Scribble {
+	return Scribble{
+		Pixels: pixels,
+		Zoom: 255,
+		Position: rl.Vector2{},
+	}
+}
+
 type Event struct {
 	PlayerId int32
 	Kind string

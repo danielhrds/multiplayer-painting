@@ -89,7 +89,7 @@ type Player struct {
 	Id        int32
 	Drawing   bool
 	JustJoined bool
-	Scribbles [][]*Pixel
+	Scribbles []Scribble
 	CachedScribbles []*Cache
 }
 
@@ -98,7 +98,7 @@ func NewPlayer(id int32) *Player {
 		id,
 		false,
 		false,
-		make([][]*Pixel, 0),
+		make([]Scribble, 0),
 		make([]*Cache, 0),
 	}
 }
@@ -122,10 +122,12 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		}
 		players[innerEvent.Id] = NewPlayer(innerEvent.Id)
 		players[innerEvent.Id].Drawing = innerEvent.Drawing
-		players[innerEvent.Id].Scribbles = innerEvent.Scribbles
+		// players[innerEvent.Id].Scribbles = innerEvent.Scribbles
 		players[innerEvent.Id].JustJoined = true
 
-		for range innerEvent.Scribbles {
+		for _, scribble := range innerEvent.Scribbles {
+			s := NewScribble(scribble)
+			Append(&players[innerEvent.Id].Scribbles, s)
 			players[innerEvent.Id].CachedScribbles = append(players[innerEvent.Id].CachedScribbles, NewCache())
 		}
 		
@@ -136,7 +138,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 	case StartedEvent:
 		clientLogger.Println("Player started drawing", event.PlayerId)
 		players[event.PlayerId].Drawing = true
-		Append(&players[event.PlayerId].Scribbles, []*Pixel{})
+		Append(&players[event.PlayerId].Scribbles, Scribble{})
 		
 		cache := NewCache()
 		Append(&players[event.PlayerId].CachedScribbles, cache)
@@ -149,7 +151,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		clientLogger.Println("Player sending pixels", event.PlayerId)
 		maxIndex := len(players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			Append(&players[event.PlayerId].Scribbles[maxIndex], innerEvent.Pixel)
+			Append(&players[event.PlayerId].Scribbles[maxIndex].Pixels, innerEvent.Pixel)
 		}
 		changed = true
 	case UndoEvent:
@@ -166,7 +168,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		selectedBoundingBox = nil
 		changed = true
 	case RedoEvent:
-		Append(&players[event.PlayerId].Scribbles, innerEvent.Pixels)
+		Append(&players[event.PlayerId].Scribbles, NewScribble(innerEvent.Pixels))
 		
 		cache := NewCache()
 		Append(&players[event.PlayerId].CachedScribbles, cache)

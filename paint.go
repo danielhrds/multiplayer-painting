@@ -166,7 +166,7 @@ func DrawIfChanged() {
 					panic("Cache nil")
 				}
 				texture := cache.RenderTexture2D
-				DrawScribble(currentlyDrawingArray, *texture)
+				DrawScribble(currentlyDrawingArray.Pixels, *texture)
 			} else if player.JustJoined {
 				for i := range len(player.Scribbles) {
 					scribble := player.Scribbles[i]
@@ -179,7 +179,7 @@ func DrawIfChanged() {
 						panic("Cache nil")
 					}
 					texture := cache.RenderTexture2D
-					DrawScribble(scribble, *texture)
+					DrawScribble(scribble.Pixels, *texture)
 					cache.Drawing = false
 				}
 				player.JustJoined = false
@@ -324,23 +324,23 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 
 	for _, player := range players {
 		for _, pixelArray := range player.Scribbles {
-			for i := range len(pixelArray) - 1 {
-				x1 := pixelArray[i].Center.X
-				x2 := pixelArray[i+1].Center.X
-				y1 := pixelArray[i].Center.Y
-				y2 := pixelArray[i+1].Center.Y
+			for i := range len(pixelArray.Pixels) - 1 {
+				x1 := pixelArray.Pixels[i].Center.X
+				x2 := pixelArray.Pixels[i+1].Center.X
+				y1 := pixelArray.Pixels[i].Center.Y
+				y2 := pixelArray.Pixels[i+1].Center.Y
 
 				for j := range 100 {
 					k := float32(j) / 100.0
 					xa := Interpolate(x1, x2, k)
 					ya := Interpolate(y1, y2, k)
 
-					radius := pixelArray[0].Radius
+					radius := pixelArray.Pixels[0].Radius
 					xHoveringLine := clickPositon.X >= xa-radius && clickPositon.X <= xa+radius
 					yHoveringLine := clickPositon.Y >= ya-radius && clickPositon.Y <= ya+radius
 					hoveringLine := xHoveringLine && yHoveringLine
 					if hoveringLine {
-						go FindBoundingBox(pixelArray)
+						go FindBoundingBox(pixelArray.Pixels)
 						return
 					}
 
