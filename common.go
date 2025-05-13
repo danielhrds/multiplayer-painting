@@ -68,7 +68,7 @@ func NewScribble(pixels []*Pixel) Scribble {
 type Event struct {
 	PlayerId int32
 	Kind string
-	InnerEvent interface{}
+	InnerEvent any
 }
 
 type PingEvent struct {}

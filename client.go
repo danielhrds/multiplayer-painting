@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync/atomic"
 	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -16,6 +17,10 @@ var players = make(map[int32]*Player)
 var me = NewPlayer(0)
 var clientLogger = NewLogger(os.Stdout, "[CLIENT]: ", log.LstdFlags)
 var clientEventsToSend = make(chan *Event)
+
+// So... This exists because golang maps are unordered
+var cacheArray []*Cache
+var cacheLayerIndex int32 = 0
 
 func _client() error {
 	url := fmt.Sprintf("localhost:%d", port)
@@ -75,13 +80,16 @@ func ClientRead(conn net.Conn) {
 type Cache struct {
 	Drawing, Empty  bool
 	RenderTexture2D *rl.RenderTexture2D
+	LayerIndex int32
 }
 
 func NewCache() *Cache {
+	newLayerIndex := atomic.AddInt32(&cacheLayerIndex, 1)
 	return &Cache{
 	 Drawing: true,
 	 Empty: true,
 	 RenderTexture2D: &rl.RenderTexture2D{},
+	 LayerIndex: newLayerIndex,
 	}
 }
 
@@ -128,7 +136,9 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		for _, scribble := range innerEvent.Scribbles {
 			s := NewScribble(scribble)
 			Append(&players[innerEvent.Id].Scribbles, s)
-			players[innerEvent.Id].CachedScribbles = append(players[innerEvent.Id].CachedScribbles, NewCache())
+			cache := NewCache()
+			Append(&cacheArray, cache)
+			players[innerEvent.Id].CachedScribbles = append(players[innerEvent.Id].CachedScribbles, cache)
 		}
 		
 		changed = true
@@ -143,6 +153,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		Append(&players[event.PlayerId].Scribbles, newScribble)
 		
 		cache := NewCache()
+		Append(&cacheArray, cache)
 		Append(&players[event.PlayerId].CachedScribbles, cache)
 	case DoneEvent:
 		clientLogger.Println("Player done drawing", event.PlayerId)
@@ -178,6 +189,7 @@ func CHandleReceivedEvents(event *Event, conn net.Conn) {
 		Append(&players[event.PlayerId].Scribbles, NewScribble(innerEvent.Pixels))
 		
 		cache := NewCache()
+		Append(&cacheArray, cache)
 		Append(&players[event.PlayerId].CachedScribbles, cache)
 		
 		changed = true

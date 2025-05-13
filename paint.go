@@ -127,7 +127,7 @@ func Input() {
 	if rl.IsKeyPressed(rl.KeyD) {
 		fmt.Println("SCRIBBLE", me.Scribbles[len(me.Scribbles)-1].BoundingBox)
 	}
-	
+
 }
 
 func DrawBoard(target rl.RenderTexture2D) {
@@ -135,7 +135,9 @@ func DrawBoard(target rl.RenderTexture2D) {
 	rl.ClearBackground(rl.White)
 
 	DrawIfChanged()
+	rl.BeginBlendMode(rl.BlendAlpha)
 	DrawCache()
+	rl.EndBlendMode()
 
 	if selectedBoundingBox != nil {
 		selectedBoundingBox.Draw()
@@ -179,7 +181,7 @@ func DrawIfChanged() {
 
 					// to remember:
 					// I initialized cache by iterating over scribbles,
-					// so now cache array is the same size as scribbles.
+					// so now cache array of each player is the same size as scribbles.
 					cache := GetCache(player, i)
 					if cache == nil {
 						panic("Cache nil")
@@ -192,6 +194,7 @@ func DrawIfChanged() {
 			}
 		}
 	}
+	changed = false
 }
 
 func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
@@ -211,22 +214,37 @@ func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
 }
 
 func DrawCache() {
-	for _, player := range players {
-		for i, cache := range player.CachedScribbles {
-			// Draws textures that are ready to be drawn or the last texture the player is currently drawing on
-			shouldDraw := !cache.Drawing || player.Drawing && i == len(player.CachedScribbles)-1
-			if shouldDraw {
-				rl.DrawTextureRec(
-					cache.RenderTexture2D.Texture,
-					rl.Rectangle{
-						X: 0, Y: 0,
-						Width:  float32(cache.RenderTexture2D.Texture.Width),
-						Height: -float32(cache.RenderTexture2D.Texture.Height),
-					},
-					rl.Vector2{X: 0, Y: 0},
-					rl.White,
-				)
-			}
+	// for _, player := range players {
+	// 	for i, cache := range player.CachedScribbles {
+	// 		// Draws textures that are ready to be drawn or the last texture the player is currently drawing on
+	// 		shouldDraw := !cache.Drawing || player.Drawing && i == len(player.CachedScribbles)-1
+	// 		if shouldDraw {
+	// 			rl.DrawTextureRec(
+	// 				cache.RenderTexture2D.Texture,
+	// 				rl.Rectangle{
+	// 					X: 0, Y: 0,
+	// 					Width:  float32(cache.RenderTexture2D.Texture.Width),
+	// 					Height: -float32(cache.RenderTexture2D.Texture.Height),
+	// 				},
+	// 				rl.Vector2{X: 0, Y: 0},
+	// 				rl.White,
+	// 			)
+	// 		}
+	// 	}
+	// }
+
+	for _, cache := range cacheArray { 
+		if !cache.Empty {
+			rl.DrawTextureRec(
+				cache.RenderTexture2D.Texture,
+				rl.Rectangle{
+					X: 0, Y: 0,
+					Width:  float32(cache.RenderTexture2D.Texture.Width),
+					Height: -float32(cache.RenderTexture2D.Texture.Height),
+				},
+				rl.Vector2{X: 0, Y: 0},
+				rl.White,
+			)
 		}
 	}
 }
@@ -349,9 +367,9 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 						scribble.BoundingBox.Max.Y += 10 + LINE_THICK
 
 						selectedBoundingBox = &BoundingBox{
-							Scribble: &scribble,
-							Min: scribble.BoundingBox.Min,
-							Max: scribble.BoundingBox.Max,
+							Scribble:  &scribble,
+							Min:       scribble.BoundingBox.Min,
+							Max:       scribble.BoundingBox.Max,
 							LineThick: 5,
 						}
 					}
@@ -389,6 +407,6 @@ func GetMinAndMax(min rl.Vector3, max rl.Vector3, pixel *Pixel) (rl.Vector3, rl.
 	if max.Y < pixel.Center.Y {
 		max.Y = pixel.Center.Y
 	}
-	
+
 	return min, max
 }
