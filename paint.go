@@ -74,7 +74,7 @@ func main() {
 
 		if !uiMode {
 			Input()
-			DrawBoard(target)
+			Draw(target)
 		}
 
 		if frame == FPS/frameSpeed {
@@ -130,11 +130,12 @@ func Input() {
 
 }
 
-func DrawBoard(target rl.RenderTexture2D) {
+func Draw(target rl.RenderTexture2D) {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.White)
 
-	DrawIfChanged()
+	DrawBoard()
+	
 	rl.BeginBlendMode(rl.BlendAlpha)
 	DrawCache()
 	rl.EndBlendMode()
@@ -164,7 +165,7 @@ func DrawBoard(target rl.RenderTexture2D) {
 	rl.EndDrawing()
 }
 
-func DrawIfChanged() {
+func DrawBoard() {
 	if changed {
 		for _, player := range players {
 			if player.Drawing {
