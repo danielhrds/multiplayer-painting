@@ -4,25 +4,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"net"
-	"os"
-	"sync/atomic"
 	"time"
-
-	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-var players = make(map[int32]*Player)
-var me = NewPlayer(0)
-var clientLogger = NewLogger(os.Stdout, "[CLIENT]: ", log.LstdFlags)
-var clientEventsToSend = make(chan *Event)
+func (b *Board) StartClient() error {
+	b.Wg.Add(1)
 
-// So... This exists because golang maps are unordered
-var cacheArray []*Cache
-var cacheLayerIndex int32 = 0
-
-func _client() error {
 	url := fmt.Sprintf("localhost:%d", port)
 	conn, err := net.Dial("tcp", url)
 	if err != nil {
@@ -30,26 +18,26 @@ func _client() error {
 	}
 
 	encondedEvent, _ := Encode(Event{
-		PlayerId:   me.Id,
+		PlayerId:   b.Me.Id,
 		Kind:       "ping",
 		InnerEvent: PingEvent{},
 	})
 
 	length := int32(len(encondedEvent.Bytes()))
 	if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-		clientLogger.Println("Failed to read prefix length")
+		b.Client.Logger.Println("Failed to read prefix length")
 		panic(err)
 	}
 
 	conn.Write(encondedEvent.Bytes())
 
-	go ClientRead(conn)
-	go CSendEvent(conn)
+	go b.Client.ClientRead(b, conn)
+	go b.Client.CSendEvent(b, conn)
 
 	return nil
 }
 
-func ClientRead(conn net.Conn) {
+func (bc *BoardClient) ClientRead(board *Board, conn net.Conn) {
 	defer conn.Close()
 
 	for {
@@ -67,159 +55,121 @@ func ClientRead(conn net.Conn) {
 
 		event, err := Decode(buf)
 		if err != nil {
-			clientLogger.Println("Failed decoding event", err)
+			bc.Logger.Println("Failed decoding event", err)
 			panic(err)
 		}
 
 		if event != nil {
-			CHandleReceivedEvents(event, conn)
+			bc.CHandleReceivedEvents(board, event, conn)
 		}
 	}
 }
 
-type Cache struct {
-	Drawing, Empty  bool
-	RenderTexture2D *rl.RenderTexture2D
-	LayerIndex int32
-}
-
-func NewCache() *Cache {
-	newLayerIndex := atomic.AddInt32(&cacheLayerIndex, 1)
-	return &Cache{
-	 Drawing: true,
-	 Empty: true,
-	 RenderTexture2D: &rl.RenderTexture2D{},
-	 LayerIndex: newLayerIndex,
-	}
-}
-
-type Player struct {
-	Id        int32
-	Drawing   bool
-	JustJoined bool
-	Scribbles []Scribble
-	CachedScribbles []*Cache
-}
-
-func NewPlayer(id int32) *Player {
-	return &Player{
-		id,
-		false,
-		false,
-		make([]Scribble, 0),
-		make([]*Cache, 0),
-	}
-}
-
-func CHandleReceivedEvents(event *Event, conn net.Conn) {
+func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn net.Conn) {
 	switch innerEvent := event.InnerEvent.(type) {
 	case PongEvent:
-		clientLogger.Println("Player ID received", event.PlayerId)
-		me.Id = event.PlayerId
-		clientEventsToSend <- &Event{
-			PlayerId:   me.Id,
-			Kind:       "joined",
-			InnerEvent: JoinedEvent{},
-		}
+		board.Client.Logger.Println("Player ID received", event.PlayerId)
+		board.Me.Id = event.PlayerId
+		bc.EnqueueEvent(board.Me.Id, "joined", JoinedEvent{})
 	case JoinedEvent:
-		clientLogger.Println("Player joined", innerEvent.Id)
-		// avoid recreating the me PlayerObject
-		if innerEvent.Id == me.Id {
-			players[innerEvent.Id] = me
+		board.Client.Logger.Println("Player joined", innerEvent.Id)
+		// avoid recreating the board.Me PlayerObject
+		if innerEvent.Id == board.Me.Id {
+			bc.Players[innerEvent.Id] = board.Me
 			break
 		}
-		players[innerEvent.Id] = NewPlayer(innerEvent.Id)
-		players[innerEvent.Id].Drawing = innerEvent.Drawing
-		// players[innerEvent.Id].Scribbles = innerEvent.Scribbles
-		players[innerEvent.Id].JustJoined = true
+		bc.Players[innerEvent.Id] = NewPlayer(innerEvent.Id)
+		bc.Players[innerEvent.Id].Drawing = innerEvent.Drawing
+		// bc.Players[innerEvent.Id].Scribbles = innerEvent.Scribbles
+		bc.Players[innerEvent.Id].JustJoined = true
 
 		for _, scribble := range innerEvent.Scribbles {
 			s := NewScribble(scribble)
-			Append(&players[innerEvent.Id].Scribbles, s)
-			cache := NewCache()
-			Append(&cacheArray, cache)
-			players[innerEvent.Id].CachedScribbles = append(players[innerEvent.Id].CachedScribbles, cache)
+			Append(&bc.Players[innerEvent.Id].Scribbles, s)
+			cache := bc.NewCache()
+			Append(&bc.CacheArray, cache)
+			bc.Players[innerEvent.Id].CachedScribbles = append(bc.Players[innerEvent.Id].CachedScribbles, cache)
 		}
-		
-		changed = true
+
+		board.Changed = true
 	case LeftEvent:
-		clientLogger.Println("Player left", event.PlayerId)
+		board.Client.Logger.Println("Player left", event.PlayerId)
 		// delete(players, event.PlayerId)
 	case StartedEvent:
-		clientLogger.Println("Player started drawing", event.PlayerId)
-		players[event.PlayerId].Drawing = true
+		board.Client.Logger.Println("Player started drawing", event.PlayerId)
+		bc.Players[event.PlayerId].Drawing = true
 		newScribble := NewScribble([]*Pixel{})
 		newScribble.BoundingBox = NewBoundingBox()
-		Append(&players[event.PlayerId].Scribbles, newScribble)
-		
-		cache := NewCache()
-		Append(&cacheArray, cache)
-		Append(&players[event.PlayerId].CachedScribbles, cache)
+		Append(&bc.Players[event.PlayerId].Scribbles, newScribble)
+
+		cache := bc.NewCache()
+		Append(&bc.CacheArray, cache)
+		Append(&bc.Players[event.PlayerId].CachedScribbles, cache)
 	case DoneEvent:
-		clientLogger.Println("Player done drawing", event.PlayerId)
-		players[event.PlayerId].Drawing = false
-		players[event.PlayerId].CachedScribbles[len(players[event.PlayerId].CachedScribbles)-1].Drawing = false
-		changed = false
+		board.Client.Logger.Println("Player done drawing", event.PlayerId)
+		bc.Players[event.PlayerId].Drawing = false
+		bc.Players[event.PlayerId].CachedScribbles[len(bc.Players[event.PlayerId].CachedScribbles)-1].Drawing = false
+		board.Changed = false
 	case DrawingEvent:
-		clientLogger.Println("Player sending pixels", event.PlayerId)
-		maxIndex := len(players[event.PlayerId].Scribbles) - 1
+		board.Client.Logger.Println("Player sending pixels", event.PlayerId)
+		maxIndex := len(bc.Players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			scribble := &players[event.PlayerId].Scribbles[maxIndex]
+			scribble := &bc.Players[event.PlayerId].Scribbles[maxIndex]
 			var min, max = GetMinAndMax(scribble.BoundingBox.Min, scribble.BoundingBox.Max, innerEvent.Pixel)
 			scribble.BoundingBox.Min = min
 			scribble.BoundingBox.Max = max
 			pixels := &scribble.Pixels
 			Append(pixels, innerEvent.Pixel)
 		}
-		changed = true
+		board.Changed = true
 	case UndoEvent:
-		maxIndex := len(players[event.PlayerId].Scribbles) - 1
+		maxIndex := len(bc.Players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
-			players[event.PlayerId].Scribbles = players[event.PlayerId].Scribbles[:maxIndex]
+			bc.Players[event.PlayerId].Scribbles = bc.Players[event.PlayerId].Scribbles[:maxIndex]
 		}
-		
-		maxIndex = len(players[event.PlayerId].CachedScribbles) - 1
+
+		maxIndex = len(bc.Players[event.PlayerId].CachedScribbles) - 1
 		if maxIndex >= 0 {
-			players[event.PlayerId].CachedScribbles = players[event.PlayerId].CachedScribbles[:maxIndex]
-			cacheArray = cacheArray[:len(cacheArray)-1]
+			bc.Players[event.PlayerId].CachedScribbles = bc.Players[event.PlayerId].CachedScribbles[:maxIndex]
+			bc.CacheArray = bc.CacheArray[:len(bc.CacheArray)-1]
 		}
-		
-		selectedBoundingBox = nil
-		changed = true
+
+		board.SelectedBoundingBox = nil
+		board.Changed = true
 	case RedoEvent:
-		Append(&players[event.PlayerId].Scribbles, NewScribble(innerEvent.Pixels))
-		
-		cache := NewCache()
-		Append(&cacheArray, cache)
-		Append(&players[event.PlayerId].CachedScribbles, cache)
-		
-		changed = true
-		players[event.PlayerId].Drawing = true
+		Append(&bc.Players[event.PlayerId].Scribbles, NewScribble(innerEvent.Pixels))
+
+		cache := bc.NewCache()
+		Append(&bc.CacheArray, cache)
+		Append(&bc.Players[event.PlayerId].CachedScribbles, cache)
+
+		board.Changed = true
+		bc.Players[event.PlayerId].Drawing = true
 	default:
-		clientLogger.Println("Unknown event type")
+		board.Client.Logger.Println("Unknown event type")
 	}
 }
 
-func CSendEvent(conn net.Conn) {
+func (bc *BoardClient) CSendEvent(board *Board, conn net.Conn) {
 	ticker := time.NewTicker(2 * time.Millisecond)
 	defer ticker.Stop()
 
 	var batchedEvents []*Event
 	for {
 		select {
-		case event := <-clientEventsToSend:
+		case event := <-bc.EventsToSend:
 			Append(&batchedEvents, event)
 
 			if len(batchedEvents) > 50 {
 				for _, event := range batchedEvents {
-					HandleEvent(event, conn)
+					bc.HandleEvent(board, event, conn)
 				}
 				batchedEvents = batchedEvents[:0]
 			}
 		case <-ticker.C:
 			if len(batchedEvents) > 0 {
 				for _, event := range batchedEvents {
-					HandleEvent(event, conn)
+					bc.HandleEvent(board, event, conn)
 				}
 				batchedEvents = batchedEvents[:0]
 			}
@@ -227,46 +177,41 @@ func CSendEvent(conn net.Conn) {
 	}
 }
 
-func HandleEvent(event *Event, conn net.Conn) {
+func (bc *BoardClient) HandleEvent(board *Board, event *Event, conn net.Conn) {
 	encondedEvent, err := Encode(*event)
 	if err != nil {
-		clientLogger.Println("Failed to encode event")
+		bc.Logger.Println("Failed to encode event")
 		panic(err)
 	}
 	length := int32(len(encondedEvent.Bytes()))
 	if err := binary.Write(conn, binary.BigEndian, length); err != nil {
-		clientLogger.Println("Failed to write prefix length")
+		bc.Logger.Println("Failed to write prefix length")
 		panic(err)
 	}
 	switch event.InnerEvent.(type) {
 	case JoinedEvent:
-		clientLogger.Println("SENDING: Player joined", event.PlayerId)
+		bc.Logger.Println("SENDING: Player joined", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case LeftEvent:
-		clientLogger.Println("SENDING: Player left", event.PlayerId)
+		bc.Logger.Println("SENDING: Player left", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
-		wg.Done()
+		board.Wg.Done()
 	case StartedEvent:
-		clientLogger.Println("SENDING: Player started drawing", event.PlayerId)
+		bc.Logger.Println("SENDING: Player started drawing", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case DoneEvent:
-		clientLogger.Println("SENDING: Player done drawing", event.PlayerId)
+		bc.Logger.Println("SENDING: Player done drawing", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case DrawingEvent:
-		clientLogger.Println("SENDING: Player sending pixels", event.PlayerId)
+		bc.Logger.Println("SENDING: Player sending pixels", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case RedoEvent:
-		clientLogger.Println("SENDING: Player sending redo", event.PlayerId)
+		bc.Logger.Println("SENDING: Player sending redo", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case UndoEvent:
-		clientLogger.Println("SENDING: Player sending undo", event.PlayerId)
+		bc.Logger.Println("SENDING: Player sending undo", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	default:
-		clientLogger.Println("SENDING: Unknown event type")
+		bc.Logger.Println("SENDING: Unknown event type")
 	}
-}
-
-func StartClient() {
-	wg.Add(1)
-	_client()
 }

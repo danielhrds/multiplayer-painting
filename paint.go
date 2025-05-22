@@ -3,46 +3,25 @@ package main
 import (
 	"fmt"
 	"math"
-	"sync"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-var (
-	width         int32 = 1600
-	height        int32 = 900
-	lastMousePos  rl.Vector2
-	changed       bool    = false
-	pixelSize     float32 = 10.0
-	FPS           int32   = 60
-	frame         int32   = 0
-	frameSpeed    int32   = 30
-	wg            sync.WaitGroup
-	uiMode        bool     = true
-	selectedColor rl.Color = rl.Black
-	CONFIG_COLOR  rl.Color = rl.Magenta
-	colorPicker            = ColorPicker{
-		Colors: []rl.Color{rl.Black, rl.Blue, rl.Pink, rl.Purple, rl.Yellow, rl.Orange, rl.Red, rl.Green},
-		Center: lastMousePos,
-		Radius: 120,
-	}
-	colorPickerOpened   bool
-	selectedBoundingBox *BoundingBox = nil
-)
-
 func main() {
+	board := NewBoard()
+
 	rl.SetTraceLogLevel(rl.LogError)
-	rl.InitWindow(width, height, "Paint")
+	rl.InitWindow(board.Width, board.Height, "Paint")
 
 	// might cause trouble
 	rl.SetWindowState(rl.FlagWindowAlwaysRun)
 
 	// rl.SetWindowState(rl.FlagVsyncHint)
-	rl.SetTargetFPS(FPS)
+	rl.SetTargetFPS(board.FPS)
 
 	defer rl.CloseWindow()
 
-	target := rl.LoadRenderTexture(width, height)
+	target := rl.LoadRenderTexture(board.FPS, board.Height)
 	halfScreenW := rl.GetScreenWidth() / 2
 	halfScreenH := rl.GetScreenHeight() / 2
 	buttonWidth := 400
@@ -51,126 +30,117 @@ func main() {
 	clientButton := NewButton(halfScreenW, halfScreenH+(buttonHeight/2)+20, buttonWidth, buttonHeight, rl.Black, "Enter", 40)
 
 	for !rl.WindowShouldClose() {
-		frame++
+		board.FrameCount++
 		// ui mode: choose if you're gonna host or enter
 		// else: start paint screen
-		if uiMode {
-			rl.BeginDrawing()
-			rl.ClearBackground(rl.White)
-			serverButton.Draw()
-			serverButton.Click(func() {
-				go StartServer()
-				go StartClient()
-				uiMode = false
-			})
-
-			clientButton.Draw()
-			clientButton.Click(func() {
-				go StartClient()
-				uiMode = false
-			})
-			rl.EndDrawing()
+		rl.BeginDrawing()
+		if board.UiMode {
+			board.DrawUIMode(serverButton, clientButton)
 		}
 
-		if !uiMode {
-			Input()
-			Draw(target)
+		if !board.UiMode {
+			board.Input()
+			board.Draw(target)
 		}
 
-		if frame == FPS/frameSpeed {
-			frame = 0
+		if board.FrameCount == board.FPS/board.FrameSpeed {
+			board.FrameCount = 0
 		}
+		rl.EndDrawing()
 	}
 
 	// close the application window so they left
-	clientEventsToSend <- &Event{
-		PlayerId:   me.Id,
-		Kind:       "left",
-		InnerEvent: LeftEvent{},
-	}
-	wg.Wait()
+	board.Client.EnqueueEvent(board.Me.Id, "left", LeftEvent{})
+	board.Wg.Wait()
 }
 
-func Input() {
-	HandlePainting()
-	HandleColorPicker()
+func (b *Board) Input() {
+	b.HandlePainting()
+	b.HandleColorPicker()
 
 	if rl.IsMouseButtonPressed(rl.MouseButtonRight) {
-		go IsMouseClickOnScribble(rl.GetMousePosition())
+		go b.IsMouseClickOnScribble(rl.GetMousePosition())
 	}
 
-	if rl.IsKeyDown(rl.KeyEqual) && frame == FPS/frameSpeed {
-		pixelSize++
+	if rl.IsKeyDown(rl.KeyEqual) && b.FrameCount == b.FPS/b.FrameSpeed {
+		b.PixelSize++
 	}
 
-	if rl.IsKeyDown(rl.KeyMinus) && pixelSize > 1 && frame == FPS/frameSpeed {
-		pixelSize--
+	if rl.IsKeyDown(rl.KeyMinus) && b.PixelSize > 1 && b.FrameCount == b.FPS/b.FrameSpeed {
+		b.PixelSize--
 	}
 
 	if rl.IsKeyPressed(rl.KeyU) {
-		clientEventsToSend <- &Event{
-			PlayerId:   me.Id,
-			Kind:       "undo",
-			InnerEvent: UndoEvent{},
-		}
+		b.Client.EnqueueEvent(b.Me.Id, "undo", UndoEvent{})
 	}
 
 	if rl.IsKeyPressed(rl.KeyR) {
-		clientEventsToSend <- &Event{
-			PlayerId:   me.Id,
-			Kind:       "redo",
-			InnerEvent: RedoEvent{},
-		}
+		b.Client.EnqueueEvent(b.Me.Id, "redo", RedoEvent{})
 	}
 
 	// debug purposes
 	if rl.IsKeyPressed(rl.KeyD) {
-		fmt.Println("SCRIBBLE", me.Scribbles[len(me.Scribbles)-1].BoundingBox)
+		fmt.Println("SCRIBBLE", b.Me.Scribbles[len(b.Me.Scribbles)-1].BoundingBox)
 	}
 
 }
 
-func Draw(target rl.RenderTexture2D) {
-	rl.BeginDrawing()
+// Draw
+
+func (b *Board) DrawUIMode(serverButton Button, clientButton Button) {
+	rl.ClearBackground(rl.White)
+	serverButton.Draw()
+	serverButton.Click(func() {
+		go StartServer()
+		go b.StartClient()
+		b.UiMode = false
+	})
+
+	clientButton.Draw()
+	clientButton.Click(func() {
+		go b.StartClient()
+		b.UiMode = false
+	})
+}
+
+func (b *Board) Draw(target rl.RenderTexture2D) {
 	rl.ClearBackground(rl.White)
 
-	DrawBoard()
-	
-	rl.BeginBlendMode(rl.BlendAlpha)
-	DrawCache()
-	rl.EndBlendMode()
+	b.DrawBoard()
 
-	if selectedBoundingBox != nil {
-		selectedBoundingBox.Draw()
+	// rl.BeginBlendMode(rl.BlendAlpha)
+	b.DrawCache()
+	// rl.EndBlendMode()
+
+	if b.SelectedBoundingBox != nil {
+		b.SelectedBoundingBox.Draw()
 	}
 
-	if colorPickerOpened {
-		colorPicker.Draw()
+	if b.ColorPickerOpened {
+		b.ColorPicker.Draw()
 	}
 
-	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), pixelSize, rl.Black)
-	rl.DrawFPS(width-200, 20)
+	rl.DrawCircleLines(rl.GetMouseX(), rl.GetMouseY(), b.PixelSize, rl.Black)
+	rl.DrawFPS(b.Width-200, 20)
 
 	mouseXText := fmt.Sprintf("Mouse X: %d", int(rl.GetMousePosition().X))
 	mouseYText := fmt.Sprintf("Mouse Y: %d", int(rl.GetMousePosition().Y))
-	rl.DrawText(mouseXText, width-200, 40, 20, rl.Black)
-	rl.DrawText(mouseYText, width-200, 60, 20, rl.Black)
+	rl.DrawText(mouseXText, b.Width-200, 40, 20, rl.Black)
+	rl.DrawText(mouseYText, b.Width-200, 60, 20, rl.Black)
 
-	pencilSizeText := fmt.Sprintf("Pencil size: %d", int(pixelSize))
-	rl.DrawText(pencilSizeText, 10, 10, 20, CONFIG_COLOR)
+	pencilSizeText := fmt.Sprintf("Pencil size: %d", int(b.PixelSize))
+	rl.DrawText(pencilSizeText, 10, 10, 20, b.CONFIG_COLOR)
 
-	rl.DrawText("Selected color: ", 10, 40, 20, CONFIG_COLOR)
-	rl.DrawCircle(180, 50, 10, selectedColor)
-
-	rl.EndDrawing()
+	rl.DrawText("Selected color: ", 10, 40, 20, b.CONFIG_COLOR)
+	rl.DrawCircle(180, 50, 10, b.SelectedColor)
 }
 
-func DrawBoard() {
-	if changed {
-		for _, player := range players {
+func (b *Board) DrawBoard() {
+	if b.Changed {
+		for _, player := range b.Client.Players {
 			if player.Drawing {
-				currentlyDrawingArray := player.Scribbles[len(player.Scribbles)-1]
-				cache := GetCache(player, len(player.CachedScribbles)-1)
+				currentlyDrawingArray := Last(player.Scribbles)
+				cache := b.GetCache(player, len(player.CachedScribbles)-1)
 				if cache == nil {
 					panic("Cache nil")
 				}
@@ -183,7 +153,7 @@ func DrawBoard() {
 					// to remember:
 					// I initialized cache by iterating over scribbles,
 					// so now cache array of each player is the same size as scribbles.
-					cache := GetCache(player, i)
+					cache := b.GetCache(player, i)
 					if cache == nil {
 						panic("Cache nil")
 					}
@@ -195,7 +165,7 @@ func DrawBoard() {
 			}
 		}
 	}
-	changed = false
+	b.Changed = false
 }
 
 func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
@@ -214,27 +184,8 @@ func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
 	rl.EndTextureMode()
 }
 
-func DrawCache() {
-	// for _, player := range players {
-	// 	for i, cache := range player.CachedScribbles {
-	// 		// Draws textures that are ready to be drawn or the last texture the player is currently drawing on
-	// 		shouldDraw := !cache.Drawing || player.Drawing && i == len(player.CachedScribbles)-1
-	// 		if shouldDraw {
-	// 			rl.DrawTextureRec(
-	// 				cache.RenderTexture2D.Texture,
-	// 				rl.Rectangle{
-	// 					X: 0, Y: 0,
-	// 					Width:  float32(cache.RenderTexture2D.Texture.Width),
-	// 					Height: -float32(cache.RenderTexture2D.Texture.Height),
-	// 				},
-	// 				rl.Vector2{X: 0, Y: 0},
-	// 				rl.White,
-	// 			)
-	// 		}
-	// 	}
-	// }
-
-	for _, cache := range cacheArray { 
+func (b *Board) DrawCache() {
+	for _, cache := range b.Client.CacheArray {
 		if !cache.Empty {
 			rl.DrawTextureRec(
 				cache.RenderTexture2D.Texture,
@@ -250,72 +201,63 @@ func DrawCache() {
 	}
 }
 
-func HandlePainting() {
+func (b *Board) HandlePainting() {
 	if rl.IsMouseButtonDown(rl.MouseButtonLeft) {
 		mousePos := rl.GetMousePosition()
-		newPixel := Pixel{mousePos, pixelSize, selectedColor}
+		fmt.Println("pixelSize", b.PixelSize)
+		newPixel := Pixel{
+			mousePos,
+			b.PixelSize,
+			b.SelectedColor,
+		}
 
 		// avoid send redundant events, otherwise, drawing will be true
 		// as long as the player hold the mouse button
 		// so it would send these events again
-		if !me.Drawing {
-			clientEventsToSend <- &Event{
-				PlayerId:   me.Id,
-				Kind:       "started",
-				InnerEvent: StartedEvent{},
-			}
-		} else if newPixel.Center != lastMousePos {
-			clientEventsToSend <- &Event{
-				PlayerId: me.Id,
-				Kind:     "drawing",
-				InnerEvent: DrawingEvent{
-					Pixel: &newPixel,
-				},
-			}
-			lastMousePos = mousePos
+		if !b.Me.Drawing {
+			b.Client.EnqueueEvent(b.Me.Id, "started", StartedEvent{})
+		} else if newPixel.Center != b.LastMousePos {
+			b.Client.EnqueueEvent(b.Me.Id, "drawing", DrawingEvent{Pixel: &newPixel})
+			b.LastMousePos = mousePos
 		}
 	} else {
-		if me.Drawing {
-			clientEventsToSend <- &Event{
-				PlayerId:   me.Id,
-				Kind:       "done",
-				InnerEvent: DoneEvent{},
-			}
+		if b.Me.Drawing {
+			b.Client.EnqueueEvent(b.Me.Id, "done", DoneEvent{})
 		}
 	}
 }
 
-func HandleColorPicker() {
+func (b *Board) HandleColorPicker() {
 	if rl.IsKeyPressed(rl.KeyC) {
-		colorPicker.LastMousePositionBeforeClick = rl.GetMousePosition()
+		b.ColorPicker.LastMousePositionBeforeClick = rl.GetMousePosition()
 	}
 
 	if rl.IsKeyDown(rl.KeyC) {
-		colorPicker.Center = colorPicker.LastMousePositionBeforeClick
-		colorPickerOpened = true
+		b.ColorPicker.Center = b.ColorPicker.LastMousePositionBeforeClick
+		b.ColorPickerOpened = true
 	}
 
 	if rl.IsKeyReleased(rl.KeyC) {
-		if colorPicker.IsHovering() {
+		if b.ColorPicker.IsHovering() {
 			currentMousePosition := rl.GetMousePosition()
-			dx := float64(currentMousePosition.X - colorPicker.Center.X)
-			dy := float64(currentMousePosition.Y - colorPicker.Center.Y)
+			dx := float64(currentMousePosition.X - b.ColorPicker.Center.X)
+			dy := float64(currentMousePosition.Y - b.ColorPicker.Center.Y)
 			angle := math.Atan2(dy, dx) * (180 / math.Pi)
 			if angle < 0 {
 				// 0, 360
 				angle += 360
 			}
-			sectorSize := 360 / len(colorPicker.Colors)
+			sectorSize := 360 / len(b.ColorPicker.Colors)
 			index := int(angle) / sectorSize
-			selectedColor = colorPicker.Colors[index]
+			b.SelectedColor = b.ColorPicker.Colors[index]
 		}
-		colorPickerOpened = false
+		b.ColorPickerOpened = false
 	}
 }
 
 // client utils
 
-func GetCache(player *Player, index int) *Cache {
+func (b *Board) GetCache(player *Player, index int) *Cache {
 	if len(player.CachedScribbles) == 0 {
 		return nil
 	}
@@ -323,7 +265,7 @@ func GetCache(player *Player, index int) *Cache {
 	cache := player.CachedScribbles[index]
 
 	if cache.Empty {
-		texture := rl.LoadRenderTexture(width, height)
+		texture := rl.LoadRenderTexture(b.Width, b.Height)
 		cache.RenderTexture2D = &texture
 		cache.Empty = false
 	}
@@ -336,14 +278,14 @@ func Interpolate(from float32, to float32, percent float32) float32 {
 	return from + (difference * percent)
 }
 
-func IsMouseClickOnScribble(clickPositon rl.Vector2) {
+func (b *Board) IsMouseClickOnScribble(clickPositon rl.Vector2) {
 	// TO DO:
 	// Implement spatial hashing to increase perfomance
 
 	// Create a client pixel type that has a reference to it's parent.
 	// That way I can find the pixel using spatial hashing and find it's parent
 
-	for _, player := range players {
+	for _, player := range b.Client.Players {
 		for _, scribble := range player.Scribbles {
 			for i := range len(scribble.Pixels) - 1 {
 				x1 := scribble.Pixels[i].Center.X
@@ -367,7 +309,7 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 						scribble.BoundingBox.Min.Y -= 10 + LINE_THICK
 						scribble.BoundingBox.Max.Y += 10 + LINE_THICK
 
-						selectedBoundingBox = &BoundingBox{
+						b.SelectedBoundingBox = &BoundingBox{
 							Scribble:  &scribble,
 							Min:       scribble.BoundingBox.Min,
 							Max:       scribble.BoundingBox.Max,
@@ -375,8 +317,8 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 						}
 					}
 
-					xInsideBoundingBox := selectedBoundingBox != nil && clickPositon.X > selectedBoundingBox.Min.X && clickPositon.X < selectedBoundingBox.Max.X
-					yInsideBoundingBox := selectedBoundingBox != nil && clickPositon.Y > selectedBoundingBox.Min.Y && clickPositon.Y < selectedBoundingBox.Max.Y
+					xInsideBoundingBox := b.SelectedBoundingBox != nil && clickPositon.X > b.SelectedBoundingBox.Min.X && clickPositon.X < b.SelectedBoundingBox.Max.X
+					yInsideBoundingBox := b.SelectedBoundingBox != nil && clickPositon.Y > b.SelectedBoundingBox.Min.Y && clickPositon.Y < b.SelectedBoundingBox.Max.Y
 					insideBoundingBox := xInsideBoundingBox && yInsideBoundingBox
 					if insideBoundingBox {
 						fmt.Println("Inside")
@@ -384,7 +326,7 @@ func IsMouseClickOnScribble(clickPositon rl.Vector2) {
 					}
 
 					if !insideBoundingBox {
-						selectedBoundingBox = nil
+						b.SelectedBoundingBox = nil
 					}
 				}
 			}

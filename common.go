@@ -17,11 +17,11 @@ var bytesReceivedLog bool
 var port = 3120
 
 func init() {
-	flag.BoolVar(&logEnabled, "log", false, "Enable log")
-	flag.BoolVar(&bytesReceivedLog, "bytes", false, "Enable bytesReceived log")
+	// flag.BoolVar(&logEnabled, "log", false, "Enable log")
+	// flag.BoolVar(&bytesReceivedLog, "bytes", false, "Enable bytesReceived log")
 	flag.Parse()
-	clientLogger.enabled = logEnabled
-	serverLogger.enabled = logEnabled
+	// clientLogger.enabled = logEnabled
+	// serverLogger.enabled = logEnabled
 	
 	// events
 	gob.Register(Event{})
@@ -134,4 +134,8 @@ func (l *Logger) Println(v ...any) {
 
 func Append[T any](array *[]T, toAppend T) {
 	*array = append(*array, toAppend)
+}
+
+func Last[T any](array []T) T {
+	return array[len(array)-1]
 }

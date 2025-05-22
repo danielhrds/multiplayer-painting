@@ -81,17 +81,18 @@ func (c *ColorPicker) IsHovering() bool {
 var LINE_THICK float32 = 6.0
 
 type BoundingBox struct {
-	Min, Max rl.Vector3
-	LineThick   float32
-	Scribble    *Scribble
+	Min, Max  rl.Vector3
+	LineThick float32
+	Scribble  *Scribble
+	Color     rl.Color
 }
 
 func NewBoundingBox() BoundingBox {
 	return BoundingBox{
-		Min: rl.NewVector3(float32(width), float32(height), -1),
-		Max: rl.NewVector3(-1, -1, -1),
+		Min:       rl.NewVector3(math.MaxInt, math.MaxInt, -1),
+		Max:       rl.NewVector3(-1, -1, -1),
 		LineThick: LINE_THICK,
-		Scribble: nil,
+		Scribble:  nil,
 	}
 }
 
@@ -104,6 +105,6 @@ func (b *BoundingBox) Draw() {
 			Height: b.Max.Y - b.Min.Y,
 		},
 		b.LineThick,
-		CONFIG_COLOR,
+		b.Color,
 	)
 }
