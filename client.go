@@ -68,11 +68,11 @@ func (bc *BoardClient) ClientRead(board *Board, conn net.Conn) {
 func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn net.Conn) {
 	switch innerEvent := event.InnerEvent.(type) {
 	case PongEvent:
-		board.Client.Logger.Println("Player ID received", event.PlayerId)
+		board.Client.Logger.Println("Sending: Player ID received", event.PlayerId)
 		board.Me.Id = event.PlayerId
 		bc.EnqueueEvent(board.Me.Id, "joined", JoinedEvent{})
 	case JoinedEvent:
-		board.Client.Logger.Println("Player joined", innerEvent.Id)
+		board.Client.Logger.Println("Sending: Player joined", innerEvent.Id)
 		// avoid recreating the board.Me PlayerObject
 		if innerEvent.Id == board.Me.Id {
 			bc.AddPlayer(board.Me)
@@ -93,10 +93,10 @@ func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn ne
 
 		board.Changed = true
 	case LeftEvent:
-		board.Client.Logger.Println("Player left", event.PlayerId)
+		board.Client.Logger.Println("Sending: Player left", event.PlayerId)
 		// delete(players, event.PlayerId)
 	case StartedEvent:
-		board.Client.Logger.Println("Player started drawing", event.PlayerId)
+		board.Client.Logger.Println("Sending: Player started drawing", event.PlayerId)
 		bc.Players[event.PlayerId].Drawing = true
 		newScribble := NewScribble([]*Pixel{})
 		newScribble.BoundingBox = NewBoundingBox()
@@ -106,12 +106,12 @@ func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn ne
 		Append(&bc.CacheArray, cache)
 		Append(&bc.Players[event.PlayerId].CachedScribbles, cache)
 	case DoneEvent:
-		board.Client.Logger.Println("Player done drawing", event.PlayerId)
+		board.Client.Logger.Println("Sending: Player done drawing", event.PlayerId)
 		bc.Players[event.PlayerId].Drawing = false
 		bc.Players[event.PlayerId].CachedScribbles[len(bc.Players[event.PlayerId].CachedScribbles)-1].Drawing = false
 		board.Changed = false
 	case DrawingEvent:
-		board.Client.Logger.Println("Player sending pixels", event.PlayerId)
+		board.Client.Logger.Println("Sending: Player sending pixels", event.PlayerId)
 		maxIndex := len(bc.Players[event.PlayerId].Scribbles) - 1
 		if maxIndex >= 0 {
 			scribble := &bc.Players[event.PlayerId].Scribbles[maxIndex]
@@ -190,28 +190,28 @@ func (bc *BoardClient) HandleEvent(board *Board, event *Event, conn net.Conn) {
 	}
 	switch event.InnerEvent.(type) {
 	case JoinedEvent:
-		bc.Logger.Println("SENDING: Player joined", event.PlayerId)
+		bc.Logger.Println("Receiving: Player joined", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case LeftEvent:
-		bc.Logger.Println("SENDING: Player left", event.PlayerId)
+		bc.Logger.Println("Receiving: Player left", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 		board.Wg.Done()
 	case StartedEvent:
-		bc.Logger.Println("SENDING: Player started drawing", event.PlayerId)
+		bc.Logger.Println("Receiving: Player started drawing", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case DoneEvent:
-		bc.Logger.Println("SENDING: Player done drawing", event.PlayerId)
+		bc.Logger.Println("Receiving: Player done drawing", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case DrawingEvent:
-		bc.Logger.Println("SENDING: Player sending pixels", event.PlayerId)
+		bc.Logger.Println("Receiving: Player sending pixels", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case RedoEvent:
-		bc.Logger.Println("SENDING: Player sending redo", event.PlayerId)
+		bc.Logger.Println("Receiving: Player sending redo", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	case UndoEvent:
-		bc.Logger.Println("SENDING: Player sending undo", event.PlayerId)
+		bc.Logger.Println("Receiving: Player sending undo", event.PlayerId)
 		conn.Write(encondedEvent.Bytes())
 	default:
-		bc.Logger.Println("SENDING: Unknown event type")
+		bc.Logger.Println("Receiving: Unknown event type")
 	}
 }
