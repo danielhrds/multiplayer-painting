@@ -22,7 +22,7 @@ func init() {
 	flag.Parse()
 	// clientLogger.enabled = logEnabled
 	// serverLogger.enabled = logEnabled
-	
+
 	// events
 	gob.Register(Event{})
 	gob.Register(JoinedEvent{})
@@ -34,7 +34,7 @@ func init() {
 	gob.Register(PongEvent{})
 	gob.Register(UndoEvent{})
 	gob.Register(RedoEvent{})
-	
+
 	// nested types (used inside events)
 	gob.Register(Pixel{})
 	gob.Register(rl.Vector2{})
@@ -51,47 +51,47 @@ type Pixel struct {
 }
 
 type Scribble struct {
-	Pixels []*Pixel
-	Zoom uint8
-	Position rl.Vector2
+	Pixels      []*Pixel
+	Zoom        uint8
+	Position    rl.Vector2
 	BoundingBox BoundingBox
 }
 
 func NewScribble(pixels []*Pixel) Scribble {
 	return Scribble{
-		Pixels: pixels,
-		Zoom: 255,
+		Pixels:   pixels,
+		Zoom:     255,
 		Position: rl.Vector2{},
 	}
 }
 
 type Event struct {
-	PlayerId int32
-	Kind string
+	PlayerId   int32
+	Kind       string
 	InnerEvent any
 }
 
-type PingEvent struct {}
+type PingEvent struct{}
 
-type PongEvent struct {}
+type PongEvent struct{}
 
 type JoinedEvent struct {
-	Id int32
-	Drawing bool
+	Id        int32
+	Drawing   bool
 	Scribbles [][]*Pixel
 } // CHANGE TO HAVE THE DATA OF THE OTHER PLAYER INSIDE IT
 
-type LeftEvent struct {}
+type LeftEvent struct{}
 
-type DoneEvent struct {}
+type DoneEvent struct{}
 
-type StartedEvent struct {}
+type StartedEvent struct{}
 
 type DrawingEvent struct {
 	Pixel *Pixel
 }
 
-type UndoEvent struct {}
+type UndoEvent struct{}
 
 type RedoEvent struct {
 	Pixels []*Pixel
@@ -115,15 +115,15 @@ func Decode(buffer []byte) (*Event, error) {
 }
 
 type Logger struct {
-	logger *log.Logger
+	logger  *log.Logger
 	enabled bool
 }
 
 func NewLogger(out io.Writer, prefix string, flag int) *Logger {
 	return &Logger{
-		logger: log.New(os.Stdout, prefix, log.LstdFlags),
+		logger:  log.New(os.Stdout, prefix, log.LstdFlags),
 		enabled: false,
-	}	
+	}
 }
 
 func (l *Logger) Println(v ...any) {

@@ -5,12 +5,12 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	
+
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
 type BoardClient struct {
-	Players         map[int32]*Player
+	Players         []*Player
 	Me              *Player
 	Logger          *Logger
 	EventsToSend    chan *Event
@@ -20,7 +20,7 @@ type BoardClient struct {
 
 func NewBoardClient() *BoardClient {
 	return &BoardClient{
-		Players:         make(map[int32]*Player),
+		Players:         make([]*Player, 0),
 		Me:              NewPlayer(0),
 		Logger:          NewLogger(os.Stdout, "[CLIENT]: ", log.LstdFlags),
 		EventsToSend:    make(chan *Event),
@@ -35,6 +35,10 @@ func (bc *BoardClient) EnqueueEvent(playerId int32, kind string, innerEvent any)
 		Kind:       kind,
 		InnerEvent: innerEvent,
 	}
+}
+
+func (bc *BoardClient) AddPlayer(player *Player) {
+	bc.Players = append(bc.Players, player)
 }
 
 type Board struct {
@@ -88,7 +92,7 @@ func NewBoard() *Board {
 		ColorPickerOpened:   false,
 		SelectedBoundingBox: nil,
 		Me:                  NewPlayer(0),
-		Client:         		 NewBoardClient(),
+		Client:              NewBoardClient(),
 	}
 }
 
@@ -125,4 +129,3 @@ func NewPlayer(id int32) *Player {
 		make([]*Cache, 0),
 	}
 }
-

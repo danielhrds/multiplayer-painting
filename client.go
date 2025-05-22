@@ -75,10 +75,10 @@ func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn ne
 		board.Client.Logger.Println("Player joined", innerEvent.Id)
 		// avoid recreating the board.Me PlayerObject
 		if innerEvent.Id == board.Me.Id {
-			bc.Players[innerEvent.Id] = board.Me
+			bc.AddPlayer(board.Me)
 			break
 		}
-		bc.Players[innerEvent.Id] = NewPlayer(innerEvent.Id)
+		bc.AddPlayer(NewPlayer(innerEvent.Id))
 		bc.Players[innerEvent.Id].Drawing = innerEvent.Drawing
 		// bc.Players[innerEvent.Id].Scribbles = innerEvent.Scribbles
 		bc.Players[innerEvent.Id].JustJoined = true

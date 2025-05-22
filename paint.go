@@ -185,18 +185,22 @@ func DrawScribble(scribble []*Pixel, renderTexture2D rl.RenderTexture2D) {
 }
 
 func (b *Board) DrawCache() {
-	for _, cache := range b.Client.CacheArray {
-		if !cache.Empty {
-			rl.DrawTextureRec(
-				cache.RenderTexture2D.Texture,
-				rl.Rectangle{
-					X: 0, Y: 0,
-					Width:  float32(cache.RenderTexture2D.Texture.Width),
-					Height: -float32(cache.RenderTexture2D.Texture.Height),
-				},
-				rl.Vector2{X: 0, Y: 0},
-				rl.White,
-			)
+	for _, player := range b.Client.Players {
+		for i, cache := range player.CachedScribbles {
+			// Draws textures that are ready to be drawn or the last texture the player is currently drawing on
+			shouldDraw := !cache.Drawing || player.Drawing && i == len(player.CachedScribbles)-1
+			if shouldDraw {
+				rl.DrawTextureRec(
+					cache.RenderTexture2D.Texture,
+					rl.Rectangle{
+						X: 0, Y: 0,
+						Width:  float32(cache.RenderTexture2D.Texture.Width),
+						Height: -float32(cache.RenderTexture2D.Texture.Height),
+					},
+					rl.Vector2{X: 0, Y: 0},
+					rl.White,
+				)
+			}
 		}
 	}
 }

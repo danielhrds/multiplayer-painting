@@ -52,7 +52,7 @@ func NewClient(id int32, conn net.Conn) *Client {
 	}
 }
 
-var id int32 = 0
+var id int32 = -1
 var clients = make(map[int32]*Client)
 var eventsToSend = make(chan *Event)
 var bytesReceivedWithinTick = 0
