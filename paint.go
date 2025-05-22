@@ -313,12 +313,7 @@ func (b *Board) IsMouseClickOnScribble(clickPositon rl.Vector2) {
 						scribble.BoundingBox.Min.Y -= 10 + LINE_THICK
 						scribble.BoundingBox.Max.Y += 10 + LINE_THICK
 
-						b.SelectedBoundingBox = &BoundingBox{
-							Scribble:  &scribble,
-							Min:       scribble.BoundingBox.Min,
-							Max:       scribble.BoundingBox.Max,
-							LineThick: 5,
-						}
+						b.SelectedBoundingBox = &scribble.BoundingBox
 					}
 
 					xInsideBoundingBox := b.SelectedBoundingBox != nil && clickPositon.X > b.SelectedBoundingBox.Min.X && clickPositon.X < b.SelectedBoundingBox.Max.X

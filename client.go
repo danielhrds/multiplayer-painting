@@ -73,7 +73,7 @@ func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn ne
 		bc.EnqueueEvent(board.Me.Id, "joined", JoinedEvent{})
 	case JoinedEvent:
 		board.Client.Logger.Println("Sending: Player joined", innerEvent.Id)
-		// avoid recreating the board.Me PlayerObject
+		// avoid recreating the Me Player object
 		if innerEvent.Id == board.Me.Id {
 			bc.AddPlayer(board.Me)
 			break
@@ -100,6 +100,7 @@ func (bc *BoardClient) CHandleReceivedEvents(board *Board, event *Event, conn ne
 		bc.Players[event.PlayerId].Drawing = true
 		newScribble := NewScribble([]*Pixel{})
 		newScribble.BoundingBox = NewBoundingBox()
+		newScribble.BoundingBox.Color = board.CONFIG_COLOR
 		Append(&bc.Players[event.PlayerId].Scribbles, newScribble)
 
 		cache := bc.NewCache()

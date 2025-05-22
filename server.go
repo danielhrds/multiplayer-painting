@@ -83,7 +83,6 @@ func (s *Server) Start() {
 	}
 }
 
-// create the package and store them on update_buffer
 func (s *Server) ReadConn(conn net.Conn) {
 	defer conn.Close()
 	defer func(conn net.Conn) {
@@ -122,7 +121,6 @@ func (s *Server) ReadConn(conn net.Conn) {
 	}
 }
 
-// handle event received
 func SHandleReceivedEvents(event *Event, conn net.Conn) {
 	// stay aware that when just forwarding the events to be sent it may break things
 	switch innerEvent := event.InnerEvent.(type) {
@@ -135,7 +133,6 @@ func SHandleReceivedEvents(event *Event, conn net.Conn) {
 			Kind:       "pong",
 			InnerEvent: PongEvent{},
 		}
-		// maybe use a lock to add the id
 	case JoinedEvent:
 		serverLogger.Println("Receiving: Joined")
 		for _, client := range clients {
